@@ -1,0 +1,24 @@
+#!/bin/bash
+
+get_realpath_location()
+{
+	if hash realpath 2>/dev/null; then
+		echo $(realpath -s "$1")
+	elif hash readlink 2>/dev/null; then
+		echo $(readlink -m "$1")
+	else
+		echo "$1"
+	fi
+}
+
+project_id="17508755"
+location=$(dirname $(get_realpath_location "$0"))
+file_version="0.1"
+
+wget -q -nv -O \
+	"$location/idena-manager" \
+	"https://gitlab.com/api/v4/projects/$project_id/repository/files/idena-manager/raw?ref=v$file_version"
+
+bash $location/idena-manager set-path
+bash $location/idena-manager cron
+chmod +x $location/idena-manager
