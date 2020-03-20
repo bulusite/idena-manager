@@ -2,7 +2,7 @@
 
 verbose=0
 command=""
-VERSION="v0.1"
+VERSION="v0.2"
 
 show_help()
 {
@@ -256,6 +256,42 @@ disable()
 		i=$((i+1))
 	done
 	#write_json 'email' ""
+	generate_configs
+}
+
+change_api_key()
+{
+	node_id=$2
+	new_api_key=$3
+
+	if [ -z "$node_id" ]
+	then
+		error_notification "Please specify Node ID"
+		exit 1
+	fi
+
+	if [ -z "$new_api_key" ]
+	then
+		read -p "Please enter node $node_id Api Key (leave empty to automatically generate random key): " new_api_key
+	fi
+
+	if [ -z "$new_api_key" ]
+	then
+		new_api_key=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 13)
+	fi
+
+	i=0
+	for node in $(get_json '.nodes[]?'); do
+		id=$(echo "$node" | jq -r '.id')
+		if [ "$node_id" == "$id" ]
+		then
+			write_json "nodes[$i].api_key" "$new_api_key"
+			success_notification "Changed API key for Node ID $node_id to: " "$new_api_key"
+			break
+		fi
+		i=$((i+1))
+	done
+
 	generate_configs
 }
 
@@ -570,6 +606,8 @@ generate_configs()
 		then
 			echo $wallet_key > $location/datadir-node$id/keystore/nodekey
 		fi
+
+		echo $api_key > $location/datadir-node$id/api.key
 
 		write_json "" "{\
 		DataDir: \"$location/datadir-node$id\",\
@@ -901,6 +939,10 @@ case $1 in
 		command=$1
 		OPTIND=2
 		;;
+	change-api-key)
+		command=$1
+		OPTIND=2
+		;;
 	*)
 		OPTIND=1
 esac
@@ -921,6 +963,7 @@ esac
 [ "$command" = "cron" ] && setup_crontab
 [ "$command" = "status" ] && status "$@"
 [ "$command" = "generate-ssh" ] && generate_ssh_tunnel "$@"
+[ "$command" = "change-api-key" ] && change_api_key "$@"
 
 shift $((OPTIND-1))
 
