@@ -316,6 +316,7 @@ supervisor_stop_idena()
 
 status()
 {
+    success_notification "idena-manager version: " "$VERSION"
 	num_running=0
 	num_enabled=0
 	for node in $(get_json '.nodes[]?'); do
