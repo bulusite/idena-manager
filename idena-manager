@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.7"
+VERSION="v0.2.6"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -703,7 +703,7 @@ update_packages()
 	then
 		give_sudo_notification
 
-		success_notification "Installing required packages. Please wait (this can take few minutes)"
+		success_notification "[$(date)] " "Installing required packages. Please wait (this can take few minutes)"
 
 		sudo apt-get -qq update > /dev/null
 
@@ -727,9 +727,9 @@ install_required_packages()
 	if [ $((n_jq)) -gt 0 ]
 	then
 		update_packages
-		success_notification "Installing " "jq"
+		success_notification "[$(date)] Installing " "jq"
 		sudo apt-get -qq -y install jq > /dev/null
-		success_notification "Finished installing " "jq"
+		success_notification "[$(date)] Finished installing " "jq"
 	fi
 
 	email=$(get_email)
@@ -1352,9 +1352,11 @@ setup_autocomplete()
 
 	if ! grep -Fxq "source $location/idena-manager-autocomplete.bash" ~/.bashrc
 	then
-		echo "source $location/idena-manager-autocomplete.bash" >> ~/.bashrc
-		# shellcheck disable=SC1090
-		source "$location/idena-manager-autocomplete.bash"
+		if test -f "$location/idena-manager-autocomplete.bash"; then
+			echo "source $location/idena-manager-autocomplete.bash" >> ~/.bashrc
+			# shellcheck disable=SC1090
+			source "$location/idena-manager-autocomplete.bash"
+		fi
 	fi
 
 	if [ $((echo_source)) == 1 ]
