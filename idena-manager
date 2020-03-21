@@ -53,11 +53,14 @@ set_path()
 {
 	location=$(dirname $(get_realpath_location "$0"))
 
-	if ! hash idena-manager 2>/dev/null;
+	#if ! hash idena-manager 2>/dev/null;
+	if ! grep -Fxq "PATH=\$PATH:$location" ~/.bashrc
 	then
 		echo "PATH=\$PATH:$location" >> ~/.bashrc
 		export PATH=$PATH:$location
 	fi
+
+	echo "$PATH:$location"
 }
 
 success_notification()
