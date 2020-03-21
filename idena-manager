@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.4"
+VERSION="v0.2.5"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -388,10 +388,41 @@ change_api_key()
 	done
 }
 
+stop_node()
+{
+	supervisor_stop
+}
+
+start_node()
+{
+	supervisor_start
+}
+
+restart_node()
+{
+	supervisor_stop
+	supervisor_start
+}
+
+supervisor_start()
+{
+	if hash supervisorctl 2>/dev/null; then
+		sudo supervisorctl reread > /dev/null
+		sudo supervisorctl update > /dev/null
+
+		if [ -z "$1" ]
+		then
+			sudo supervisorctl start all > /dev/null
+		else
+			sudo supervisorctl start "$1" > /dev/null
+		fi
+	fi
+}
+
 supervisor_stop()
 {
 	if hash supervisorctl 2>/dev/null; then
-		if test -f "/etc/supervisorct/conf.d/idena.conf"; then
+		if test -f "/etc/supervisor/conf.d/idena.conf"; then
         	if [ -z "$1" ]
         	then
         		sudo supervisorctl stop all > /dev/null
@@ -533,21 +564,6 @@ generate_ssh_tunnel()
 		fi
 		i=$((i+1))
 	done
-}
-
-supervisor_start()
-{
-	if hash supervisorctl 2>/dev/null; then
-		sudo supervisorctl reread > /dev/null
-		sudo supervisorctl update > /dev/null
-
-		if [ -z "$1" ]
-		then
-			sudo supervisorctl start all > /dev/null
-		else
-			sudo supervisorctl start "$1" > /dev/null
-		fi
-	fi
 }
 
 supervisor_start_idena()
@@ -760,7 +776,15 @@ do_update_nodes()
 		else
 			supervisor_stop "idena:node$id"
 			success_notification "Update node in $location to: " "$latest_version"
-			download_node "$latest_version" "$location/idena-node-linux-latest"
+			download_node "$latest_version" "$location/idena-node-linux-latest-temp"
+			success=$?
+			if [ $success == 1 ]
+			then
+				mv -f "$location/idena-node-linux-latest-temp" "$location/idena-node-linux-latest"
+				success_notification "Finished node update in $location to: " "$latest_version"
+			else
+				error_notification "Failed to download node file: " "$location/idena-node-linux-latest"
+			fi
 			supervisor_start "idena:node$id"
 		fi
 	done
@@ -1255,6 +1279,10 @@ case $1 in
 		command=$1
 		OPTIND=2
 		;;
+	start|stop|restart)
+		command=$1
+		OPTIND=2
+		;;
 	*)
 		OPTIND=1
 esac
@@ -1281,6 +1309,9 @@ esac
 [ "$command" = "change-api-key" ] && change_api_key "$@"
 [ "$command" = "read-logs" ] && read_logs "$@"
 [ "$command" = "setup-autocomplete" ] && setup_autocomplete
+[ "$command" = "stop" ] && stop_node "$@"
+[ "$command" = "start" ] && start_node "$@"
+[ "$command" = "restart" ] && restart_node "$@"
 
 shift $((OPTIND-1))
 
