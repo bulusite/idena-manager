@@ -20,7 +20,7 @@ wget -q -nv -O \
 	"https://gitlab.com/api/v4/projects/$gpi/repository/files/idena-manager/raw?ref=v$file_version"
 
 wget -q -nv -O \
-	"$location/idena-manager" \
+	"$location/idena-manager-autocomplete.bash" \
 	"https://gitlab.com/api/v4/projects/$gpi/repository/files/idena-manager-autocomplete.bash/raw?ref=v$file_version"
 
 bash $location/idena-manager set-path
