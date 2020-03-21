@@ -11,13 +11,13 @@ get_realpath_location()
 	fi
 }
 
-project_id="17508755"
+git_project_id="17508755"
 location=$(dirname $(get_realpath_location "$0"))
-file_version="0.2"
+file_version="0.2.1"
 
 wget -q -nv -O \
 	"$location/idena-manager" \
-	"https://gitlab.com/api/v4/projects/$project_id/repository/files/idena-manager/raw?ref=v$file_version"
+	"https://gitlab.com/api/v4/projects/$git_project_id/repository/files/idena-manager/raw?ref=v$file_version"
 
 bash $location/idena-manager set-path
 bash $location/idena-manager cron

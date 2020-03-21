@@ -2,7 +2,11 @@
 
 verbose=0
 command=""
-VERSION="v0.2"
+VERSION="v0.2.1"
+donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
+git_project_id="17508755"
+
+#trap 'kill $(jobs -p)' EXIT
 
 show_help()
 {
@@ -38,6 +42,8 @@ set_notifications()
 {
 	email=$2
 
+	install_required_packages
+
 	write_json 'email' "$email"
 
 	generate_configs
@@ -56,7 +62,10 @@ set_path()
 
 success_notification()
 {
-	if [ ! -z "$3" ]
+	if [ ! -z "$4" ]
+	then
+		write_notification "" "32" "$1" "$2" "$3" "$4"
+	elif [ ! -z "$3" ]
 	then
 		write_notification "" "32" "$1" "$2" "$3"
 	elif [ ! -z "$2" ]
@@ -70,7 +79,10 @@ success_notification()
 
 error_notification()
 {
-	if [ ! -z "$3" ]
+	if [ ! -z "$4" ]
+	then
+		write_notification "41" "" "$1" "$2" "$3" "$4"
+	elif [ ! -z "$3" ]
 	then
 		write_notification "41" "" "$1" "$2" "$3"
 	elif [ ! -z "$2" ]
@@ -89,11 +101,30 @@ write_notification()
 	prefix="$3"
 	message="$4"
 	suffix="$5"
+	alignment="$6"
+
+	if [ -z "$alignment" ]
+	then
+		alignment="left"
+	fi
 
 	[ -z "$background_color" ] && background_color="49"
 	[ -z "$foreground_color" ] && foreground_color="39"
 
-	echo -e "$prefix\e[0;"$foreground_color";"$background_color"m$message\e[0m$suffix" >&2
+	columns="$(tput cols)"
+	formatted_message=$(echo -e "$prefix\e[0;"$foreground_color";"$background_color"m$message\e[0m$suffix")
+
+	len=0
+
+	if [ "$alignment" == "center" ]
+	then
+		len=$(( (${#formatted_message} + columns) / 2))
+	elif [ "$alignment" == "right" ]
+	then
+		len=$((columns))
+	fi
+
+	printf "%*s\n" $len "$formatted_message" >&2
 }
 
 is_root_user()
@@ -208,6 +239,8 @@ find_next_port()
 
 enable()
 {
+	install_required_packages
+
 	nodes=("$@")
 	declare -A nodes_to_enable
 	for node_i in "${nodes[@]:1}"
@@ -234,6 +267,8 @@ enable()
 
 disable()
 {
+	install_required_packages
+
 	nodes=("$@")
 	declare -A nodes_to_remove
 	for node_i in "${nodes[@]:1}"
@@ -280,6 +315,8 @@ change_api_key()
 		new_api_key=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 13)
 	fi
 
+	install_required_packages
+
 	i=0
 	for node in $(get_json '.nodes[]?'); do
 		id=$(echo "$node" | jq -r '.id')
@@ -287,12 +324,11 @@ change_api_key()
 		then
 			write_json "nodes[$i].api_key" "$new_api_key"
 			success_notification "Changed API key for Node ID $node_id to: " "$new_api_key"
+			generate_configs
 			break
 		fi
 		i=$((i+1))
 	done
-
-	generate_configs
 }
 
 supervisor_stop()
@@ -314,9 +350,21 @@ supervisor_stop_idena()
 	supervisor_stop "idena:*"
 }
 
+get_email()
+{
+	email=$(get_json ".email")
+
+	[ "$email" == "null" ] && email=""
+
+	echo "$email"
+}
+
 status()
 {
     success_notification "idena-manager version: " "$VERSION"
+
+    install_required_packages
+
 	num_running=0
 	num_enabled=0
 	for node in $(get_json '.nodes[]?'); do
@@ -370,23 +418,27 @@ status()
 		success_notification "Please enable inbound traffic to your Listening port on the firewall."
 		success_notification "When connecting your Idena client, use RPC port for tunneling"
 
-		email=$(get_json ".email?")
+		email=$(get_email)
 		if ! [ -z "$email" ]
 		then
 			success_notification \
 			"Your emails are going to arrive from this address (probably in spam, so you could create filters): " \
-			"$USER@$HOSTNAME"
+			"$USER@$HOSTNAME" \
+			" Emails are being sent to $email"
 		fi
 	fi
 
 	echo
-	success_notification "##########################################################################################\
-###############"
+
+	delimiter=""
+	num_cols=$(tput cols)
+	for i in $(seq 1 $num_cols); do
+		delimiter=$delimiter"#"
+	done
+	success_notification "$delimiter"
 	success_notification \
-	"    If this idena-manager is helping you, please donate to " \
-	"0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
-	success_notification "##########################################################################################\
-###############"
+	"If this idena-manager is helping you, please donate to " "$donation_address" "" "center"
+	success_notification "$delimiter"
 }
 
 generate_ssh_tunnel()
@@ -397,6 +449,8 @@ generate_ssh_tunnel()
 	do
 		nodes_to_enable["node$node_i"]=1
 	done
+
+	install_required_packages
 
 	i=0
 	for node in $(get_json '.nodes[]?'); do
@@ -444,47 +498,102 @@ supervisor_start_idena()
 	supervisor_start "idena:*"
 }
 
+give_sudo_notification()
+{
+	if ! is_root_user
+	then
+		mess="You're running this script as a non-root user. This script needs to install some packages for \
+it to work without any problems, so you might be asked to enter your root password during installation"
+		write_notification "43" "30" "" "$mess" "\n"
+	fi
+}
+
+installed_updates=0
+
+update_packages()
+{
+	if [ $installed_updates == 0 ]
+	then
+		give_sudo_notification
+
+		success_notification "Installing required packages. Please wait (this can take few minutes)"
+
+		sudo apt-get -qq update > /dev/null
+
+		installed_updates=1
+	fi
+}
+
 install_required_packages()
 {
-	email=$(get_json ".email?")
+	n_jq=0
+	n_supervisor=0
+	n_pip=0
+	n_sendmail=0
+	n_superlance=0
+
+	if ! hash jq 2>/dev/null;
+	then
+		n_jq=1
+	fi
+
+	if [ $(($n_jq)) -gt 0 ]
+	then
+		update_packages
+
+		sudo apt-get -qq -y install jq > /dev/null
+	fi
+
+	email=$(get_email)
+
+	if ! hash supervisorctl 2>/dev/null;
+	then
+		n_supervisor=1
+	fi
 
 	if ! [ -z "$email" ]
 	then
-		if ! hash supervisorctl pip sendmail 2>/dev/null;
+		if ! hash pip 2>/dev/null;
 		then
-			success_notification "Installing required packages. Please wait (this can take up to 7 minutes)"
-
-			sudo apt-get -qq update > /dev/null
-
-			if ! hash supervisorctl 2>/dev/null;
-			then
-				sudo apt-get -qq -y install supervisor > /dev/null
-			fi
-
-			if ! hash pip 2>/dev/null;
-			then
-				sudo apt-get -qq -y install python-pip > /dev/null
-			fi
-
-			if ! hash sendmail 2>/dev/null;
-			then
-				sudo apt-get -qq -y install sendmail > /dev/null
-			fi
+			n_pip=1
+			n_superlance=1
 		fi
 
-		if ! (pip list --format=legacy --disable-pip-version-check | grep -E "^superlance" >/dev/null); then
+		if ! hash sendmail 2>/dev/null;
+		then
+			n_sendmail=1
+		fi
+
+		if [ $(($n_superlance)) == 0 ]
+		then
+			if ! (pip list --format=legacy --disable-pip-version-check | grep -E "^superlance" >/dev/null); then
+				n_superlance=1
+			fi
+		fi
+	fi
+
+	if [ $(($n_supervisor + $n_pip + $n_sendmail + $n_superlance)) -gt 0 ]
+	then
+		update_packages
+
+		if [ $(($n_supervisor)) == 1 ]
+		then
+			sudo apt-get -qq -y install supervisor > /dev/null
+		fi
+
+		if [ $(($n_pip)) == 1 ]
+		then
+			sudo apt-get -qq -y install python-pip > /dev/null
+		fi
+
+		if [ $(($n_sendmail)) == 1 ]
+		then
+			sudo apt-get -qq -y install sendmail > /dev/null
+		fi
+
+		if [ $(($n_superlance)) == 1 ]
+		then
 			sudo pip install -q superlance > /dev/null
-		fi
-	else
-		if ! hash supervisorctl 2>/dev/null; then
-			success_notification "Installing required packages. Please wait (this can take up to 2 minutes)"
-
-			sudo apt-get -qq update > /dev/null
-
-			if ! hash supervisorctl 2>/dev/null;
-			then
-				sudo apt-get -qq -y install supervisor > /dev/null
-			fi
 		fi
 	fi
 
@@ -493,12 +602,50 @@ install_required_packages()
 
 download_node()
 {
-	version="$1"
+	v="$1"
 	location="$2"
 
 	wget -q -nv -O \
-		"$location" https://github.com/idena-network/idena-go/releases/download/v$version/idena-node-linux-$version
+		"$location" https://github.com/idena-network/idena-go/releases/download/v$v/idena-node-linux-$v
 	chmod +x "$location"
+}
+
+read_logs()
+{
+	install_required_packages
+
+	nodes=("$@")
+	declare -A nodes_to_read
+	for node_i in "${nodes[@]:1}"
+	do
+		nodes_to_read["node$node_i"]=1
+	done
+
+	declare -A files
+
+	i=0
+	file_i=0
+	for node in $(get_json '.nodes[]?'); do
+		id=$(echo "$node" | jq -r '.id')
+		location=$(echo "$node" | jq -r '.location')
+
+		if [ "${#nodes_to_read[@]}" -gt 0 ]
+		then
+			if [[ ${nodes_to_read["node$id"]} ]]
+			then
+				success_notification "Reading log for Node ID " "$id"
+				files[$file_i]="$location/log_stderr_node$id.log"
+				file_i=$((file_i+1))
+			fi
+		else
+			success_notification "Reading log for Node ID " "$id"
+			files[$file_i]="$location/log_stderr_node$id.log"
+			file_i=$((file_i+1))
+		fi
+		i=$((i+1))
+	done
+
+	tail -f "${files[@]}"
 }
 
 do_update_nodes()
@@ -554,7 +701,6 @@ update()
 
 self_update()
 {
-	project_id="17508755"
 	location=$(dirname $(get_realpath_location "$0"))
 
 	suim="self-updater-idena-manager"
@@ -563,14 +709,14 @@ self_update()
 		rm $location/$suim
 	fi
 
-	latest_version=$(curl -s "https://gitlab.com/api/v4/projects/$project_id/releases" | jq -r '.[0]?.tag_name')
+	latest_version=$(curl -s "https://gitlab.com/api/v4/projects/$git_project_id/releases" | jq -r '.[0]?.tag_name')
 
 	if [ "$latest_version" != "$VERSION" ]
 	then
 		success_notification "Updating to version " "$latest_version"
 		wget -q -nv -O \
 			"$location/$suim" \
-			"https://gitlab.com/api/v4/projects/$project_id/repository/files/$suim/raw?ref=$latest_version"
+			"https://gitlab.com/api/v4/projects/$git_project_id/repository/files/$suim/raw?ref=$latest_version"
 		chmod +x "$location/$suim"
 		touch $location/idena-manager-should-self-update
 	fi
@@ -655,7 +801,7 @@ generate_configs()
 		i=$(($i+1))
 	done
 
-	email=$(get_json ".email?")
+	email=$(get_email)
 	if ! [ -z "$email" ]
 	then
 		supervisor_conf=$supervisor_conf"\n"
@@ -788,16 +934,6 @@ get_realpath_location()
 
 add()
 {
-	if is_root_user
-	then
-		apt-get -qq -y install jq
-	else
-		mess="You're running this script as a non-root user. This script needs to install some packages for \
-it to work without any problems, so you might be asked to enter your root password during installation"
-		write_notification "43" "30" "" "$mess" "\n"
-		sudo apt-get -qq -y install jq
-	fi
-
 	OPTIND=2
 	email=""
 	num_instances=""
@@ -936,13 +1072,21 @@ it to work without any problems, so you might be asked to enter your root passwo
 }
 
 case $1 in
-	add|update|set-notifications|disable-notifications|disable|enable|set-path|cron|status|generate-ssh|install)
+	add|update|set-notifications|disable-notifications|disable|enable|set-path|cron|status|generate-ssh)
 		command=$1
 		OPTIND=2
 		;;
 	change-api-key)
 		command=$1
 		OPTIND=2
+		;;
+	read-logs)
+		command=$1
+		OPTIND=2
+		;;
+	install)
+		install_required_packages
+		exit 0
 		;;
 	*)
 		OPTIND=1
@@ -955,7 +1099,6 @@ esac
 [ "$command" = "regenerate" ] && generate_configs
 [ "$command" = "disable" ] && disable "$@"
 [ "$command" = "enable" ] && enable "$@"
-[ "$command" = "install" ] && install_required_packages
 [ "$command" = "set-notifications" ] && set_notifications "$@"
 [ "$command" = "disable-notifications" ] && set_notifications ""
 [ "$command" = "self-update" ] && self_update "$@"
@@ -965,6 +1108,7 @@ esac
 [ "$command" = "status" ] && status "$@"
 [ "$command" = "generate-ssh" ] && generate_ssh_tunnel "$@"
 [ "$command" = "change-api-key" ] && change_api_key "$@"
+[ "$command" = "read-logs" ] && read_logs "$@"
 
 shift $((OPTIND-1))
 
