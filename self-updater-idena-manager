@@ -13,7 +13,7 @@ get_realpath_location()
 
 git_project_id="17508755"
 location=$(dirname $(get_realpath_location "$0"))
-file_version="0.2.2"
+file_version="0.2.3"
 
 wget -q -nv -O \
 	"$location/idena-manager" \

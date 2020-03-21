@@ -2,7 +2,7 @@
 
 verbose=0
 command=""
-VERSION="v0.2.2"
+VERSION="v0.2.3"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 git_project_id="17508755"
 
@@ -25,28 +25,30 @@ show_help()
 	"\t" "-k api_key" "\t\t\t\t\t" "API key (for first instance). If empty, random will be generated" "\n" \
 	"\t" "-w wallet" "\t\t\t\t\t" "Wallet key (for first instance). If empty, random will be generated" "\n" \
 	"\n" \
-	"" "2) update" "\t\t\t\t\t\t" "Update node version on all instances" "\n" \
-	"" "3) self-update" "\t\t\t\t\t" "Update idena-manager" "\n" \
-	"" "4) node-update" "\t\t\t\t\t" "Update node instances" "\n" \
+	"" "2) update [force]" "\t\t\t\t\t" "Update node version on all instances" "\n" \
+	"" "3) self-update [force]" "\t\t\t\t" "Update idena-manager" "\n" \
+	"" "4) node-update [force]" "\t\t\t\t" "Update node instances" "\n" \
 	"" "5) disable-node-update" "\t\t\t\t" "Disable update of node instances" "\n" \
 	"" "6) enable-node-update" "\t\t\t\t" "Enable updates of node instances" "\n" \
-	"" "7) set-notifications \"your_email@host.domain\"" "\t" "Set or change email for error notifications" "\n"\
-	"" "8) disable-notifications" "\t\t\t\t" "Disable email notifications" "\n"\
-	"" "9) enable [node [node [node]]]" "\t\t\t" "Enable node server. If no node identificator is sent, all nodes "\
+	"" "7) disable-self-update" "\t\t\t\t" "Disable update of idena-manager" "\n" \
+	"" "8) enable-self-update" "\t\t\t\t" "Enable updates of idena-manager" "\n" \
+	"" "9) set-notifications \"your_email@host.domain\"" "\t" "Set or change email for error notifications" "\n"\
+	"" "10) disable-notifications" "\t\t\t\t" "Disable email notifications" "\n"\
+	"" "11) enable [node [node [node]]]" "\t\t\t" "Enable node server. If no node identificator is sent, all nodes "\
 	"will be enabled. " "\n" \
 	"\t\t\t\t\t\t\t" "Example: enable 1 2 - will enable node 1 and node 2" "\n" \
-	"" "10) disable [node [node [node]]]" "\t\t\t" "Disable node server. If no node identificator is sent, all nodes "\
+	"" "12) disable [node [node [node]]]" "\t\t\t" "Disable node server. If no node identificator is sent, all nodes "\
 	"will be disabled. " "\n" \
 	"\t\t\t\t\t\t\t" "Example: disable 1 2 - will disable node 1 and node 2" "\n" \
-	"" "11) read-logs [node [node [node]]]" "\t\t\t" "Read and listen log files. I no node identifier sent, all " \
+	"" "13) read-logs [node [node [node]]]" "\t\t\t" "Read and listen log files. I no node identifier sent, all " \
 	"will be included in logs. \n" \
 	"\t\t\t\t\t\t\t" "Example: read-logs 1 2 - this will listen on logs for node 1 and 2" "\n" \
-	"" "12) change-api-key <node_id> [api_key]" "\t\t" "Change API key for a node instance. " "\n" \
+	"" "14) change-api-key <node_id> [api_key]" "\t\t" "Change API key for a node instance. " "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 - this will ask you for a key and change it on Node ID 1" "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 \"idena\" - this will change API key to \"idena\" on Node ID 1" "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 \"\" - this will generate random API key and apply it to Node ID 1" \
 	"\n" \
-	"" "13) status" "\t\t\t\t\t\t" "Get status of all node instances (including API keys and ports)" "\n" \
+	"" "15) status" "\t\t\t\t\t\t" "Get status of all node instances (including API keys and ports)" "\n" \
 	"\n" \
 	"Please note: only one email for all instances can be set. In case you add new server and set another email" \
 	"during installation, that email will be used for all other instances as well"
@@ -648,16 +650,6 @@ install_required_packages()
 	set_path 0
 }
 
-download_node()
-{
-	v="$1"
-	location="$2"
-
-	wget -q -nv -O \
-		"$location" https://github.com/idena-network/idena-go/releases/download/v$v/idena-node-linux-$v
-	chmod +x "$location"
-}
-
 read_logs()
 {
 	install_required_packages
@@ -696,22 +688,64 @@ read_logs()
 	tail -f "${files[@]}"
 }
 
+get_node_file_version()
+{
+	node_file="$1"
+
+	echo "$($node_file --version | cut -d " " -f 3 | tr -d '^M' | tr -d '\r')"
+}
+
+download_node()
+{
+	v="$1"
+	download_location="$2"
+
+	if wget -q -nv -O \
+		"$download_location" https://github.com/idena-network/idena-go/releases/download/v$v/idena-node-linux-$v
+	then
+		chmod +x "$download_location"
+		new_file_version=$(get_node_file_version "$download_location")
+		if [ "$new_file_version" != "$v" ]
+		then
+			rm "$download_location"
+			return 0
+		fi
+		return 1
+	else
+		return 0
+	fi
+}
+
 do_update_nodes()
 {
 	latest_version=$(curl -s https://api.github.com/repos/idena-network/idena-go/releases/latest | \
 		jq -r '.tag_name'| cut -d "v" -f 2)
+
+	if [ -z "$latest_version" ] || [ "$latest_version" == "null" ]
+	then
+		error_notification "Failed to fetch latest node version"
+		return 0
+	fi
 
 	for node in $(get_json '.nodes[]?'); do
 		id=$(echo "$node" | jq -r '.id')
 		location=$(echo "$node" | jq -r '.location')
 
 		if test -f "$location/idena-node-linux-latest"; then
-			node_version=$($location/idena-node-linux-latest --version | cut -d " " -f 3 | tr -d '^M' | tr -d '\r')
+			node_version=$(get_node_file_version $location/idena-node-linux-latest)
 			if [ ! "$node_version" = "$latest_version" ]
 			then
 				supervisor_stop "idena:node$id"
-				success_notification "Update node in $location to: " "$latest_version"
-				download_node "$latest_version" "$location/idena-node-linux-latest"
+				success_notification "Starting node update in $location to: " "$latest_version"
+				download_node "$latest_version" "$location/idena-node-linux-latest-temp"
+				success=$?
+				if [ $success == 1 ]
+				then
+					mv -f $location/idena-node-linux-latest-temp $location/idena-node-linux-latest
+					success_notification "Finished node update in $location to: " "$latest_version"
+				else
+					error_notification "Failed to download node file: " "$location/idena-node-linux-latest"
+				fi
 				supervisor_start "idena:node$id"
 			fi
 		else
@@ -725,16 +759,19 @@ do_update_nodes()
 
 node_update()
 {
-	allow_node_update=$(get_json ".allow_node_update")
-
-	[ "$allow_node_update" == "null" ] && allow_node_update=""
-
-	[ -z "$allow_node_update" ] && allow_node_update=1
-
-	if [ $(($allow_node_update)) == 0 ]
+	if [ ! "$2" == "force" ]
 	then
-		error_notification "Node update is disabled"
-		return 1
+		allow_node_update=$(get_json ".allow_node_update")
+
+		[ "$allow_node_update" == "null" ] && allow_node_update=""
+
+		[ -z "$allow_node_update" ] && allow_node_update=1
+
+		if [ $(($allow_node_update)) == 0 ]
+		then
+			error_notification "Node update is disabled"
+			return 1
+		fi
 	fi
 
 	timestamp=$(date +"%s")
@@ -766,16 +803,19 @@ self_update()
 		rm $location/$suim
 	fi
 
-	allow_self_update=$(get_json ".allow_self_update")
-
-	[ "$allow_self_update" == "null" ] && allow_self_update=""
-
-	[ -z "$allow_self_update" ] && allow_self_update=1
-
-	if [ $(($allow_self_update)) == 0 ]
+	if [ ! "$2" == "force" ]
 	then
-		error_notification "Self update is disabled"
-		return 1
+		allow_self_update=$(get_json ".allow_self_update")
+
+		[ "$allow_self_update" == "null" ] && allow_self_update=""
+
+		[ -z "$allow_self_update" ] && allow_self_update=1
+
+		if [ $(($allow_self_update)) == 0 ]
+		then
+			error_notification "Self update is disabled"
+			return 1
+		fi
 	fi
 
 	latest_version=$(curl -s "https://gitlab.com/api/v4/projects/$git_project_id/releases" | jq -r '.[0]?.tag_name')
