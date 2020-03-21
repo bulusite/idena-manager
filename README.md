@@ -23,11 +23,8 @@ We recommend to run whole script as root user, but it's not a requirement. Scrip
  only to install necessary dependencies.
 
 ## Install script (run this only once)
- - Go to directory you'd like to keep idena manager (you can skip this)
- - `wget -O idena-manager "https://gitlab.com/crackowich/idena-manager/-/raw/master/idena-manager"`
- - `chmod +x idena-manager`
- - `./idena-manager set-path`
- - `export PATH=$PATH:$(pwd)`
+ - Go to directory you'd like to keep idena manager in (you can skip this)
+ - `wget -O idena-manager "https://gitlab.com/crackowich/idena-manager/-/raw/master/idena-manager" && chmod +x idena-manager && export PATH=$(./idena-manager set-path)`
 
 ## Commands
  - To add new idena node, run: `idena-manager add` (see advanced options [here](#the-add-command))
