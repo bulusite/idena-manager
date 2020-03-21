@@ -46,6 +46,10 @@ _completions()
 			COMMANDS+=("cron")
 			COMMANDS+=("set-path")
 			COMMANDS+=("regenerate")
+			COMMANDS+=("stop")
+			COMMANDS+=("start")
+			COMMANDS+=("restart")
+			COMMANDS+=("check-corrupt-db")
 
 			COMPREPLY=($(compgen -W "${COMMANDS[*]}" "${COMP_WORDS[1]}"))
 			return

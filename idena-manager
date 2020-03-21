@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.5"
+VERSION="v0.2.6"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -90,6 +90,120 @@ enable_node_update()
 	install_required_packages
 
 	write_json 'allow_node_update' "$enabled"
+}
+
+check_last_seen()
+{
+	response=$(curl -s "https://api.idena.io/api/OnlineIdentity/$1")
+	last_activity=$(echo "$response" | jq -r '.result.lastActivity')
+	result=$(echo "$response" | jq -r '.result')
+	online=$(echo "$response" | jq -r '.result.online')
+
+	if [ -z "$online" ] || [ "$online" == "null" ] || [ "$online" == "false" ];
+	then
+		online=0
+	else
+		online=1
+	fi
+
+	if [ $((online)) -eq 0 ] || [ "$last_activity" == "null" ];
+	then
+		last_seen=$(date +"%s")
+	else
+		last_seen=$(date -d "$last_activity" +"%s")
+	fi
+
+	echo $((last_seen))
+}
+
+check_corrupt_db()
+{
+	should_delete="$2"
+
+	if [ -z "$should_delete" ] || [ $((should_delete)) -ne 1 ]
+	then
+		should_delete=0
+	else
+		should_delete=1
+	fi
+
+	predefined_last_seen="$3"
+
+	if [ -z "$predefined_last_seen" ] || [ $((predefined_last_seen)) -le 0 ]
+	then
+		predefined_last_seen=0
+	else
+		predefined_last_seen=$((predefined_last_seen))
+	fi
+
+	i=0
+	for node in $(get_json '.nodes[]?'); do
+		id=$(echo "$node" | jq -r '.id')
+		location=$(echo "$node" | jq -r '.location')
+		address=$(echo "$node" | jq -r '.address')
+		enabled=$(echo "$node" | jq -r '.enabled')
+
+		if [ $((enabled)) -eq 0 ]
+		then
+			i=$((i+1))
+			continue
+		fi
+
+		timestamp=$(date +"%s")
+
+		if [ $((predefined_last_seen)) -le 0 ]
+		then
+			if [ -z "$address" ] || [ "$address" == "null" ];
+			then
+				error_notification "Failed to fetch addess for Node ID " "$id"
+				i=$((i+1))
+				continue
+			fi
+
+			last_seen=$(check_last_seen "$address")
+			seen_ago=$((timestamp - last_seen))
+		else
+			seen_ago=$((predefined_last_seen))
+		fi
+
+		if [ $((seen_ago)) -gt 899 ]
+		then
+			ts=$((seen_ago))
+			while [ $((ts)) -ge 0 ];
+			do
+				date_from=$(date -d "@$((timestamp-ts))" +"%m\-%d|%H:%M")
+				ts=$((ts-60))
+
+				results=$(\
+					grep "ERROR\[$date_from" "$location/datadir-node$id/logs/output.log" | \
+					grep "Failed to recover blockchain" | \
+					grep "state db is corrupted, try to delete idenachain.db"
+				)
+
+				if [ $(("${#results}")) -gt 0 ]
+				then
+					if [ $((should_delete)) -eq 1 ]
+					then
+						success_notification "Removing DB for Node ID $id " "$location/datadir-node$id/idenachain.db"
+						supervisor_stop "idena:node$id"
+						#rm -rf "$location/datadir-node$id/idenachain.db"
+						supervisor_start "idena:node$id"
+					else
+						error_notification "Found error Node ID $id. " "Should delete idenachain.db folder"
+						error_notification "Please execute "\
+							"idena-manager $1 1 $seen_ago" \
+							" to remove idenachain.db"
+					fi
+				fi
+			done
+
+			error_notification "Something's wrong on Node ID $id. Last seen is " "$seen_ago" " seconds ago"
+			error_notification "Please execute " "idena-manager $1 0 $seen_ago" \
+				" to check if there are any errors in log"
+		fi
+
+		i=$((i+1))
+	done
 }
 
 set_path()
@@ -878,6 +992,7 @@ generate_configs()
 
 		if [ ! $((enabled)) -eq 1 ]
 		then
+			i=$((i+1))
 			continue
 		fi
 
@@ -977,6 +1092,7 @@ generate_configs()
 
 		if [ ! $((enabled)) -eq 1 ]
 		then
+			i=$((i+1))
 			continue
 		fi
 
@@ -1283,6 +1399,10 @@ case $1 in
 		command=$1
 		OPTIND=2
 		;;
+	check-corrupt-db)
+		command=$1
+		OPTIND=2
+		;;
 	*)
 		OPTIND=1
 esac
@@ -1312,6 +1432,7 @@ esac
 [ "$command" = "stop" ] && stop_node "$@"
 [ "$command" = "start" ] && start_node "$@"
 [ "$command" = "restart" ] && restart_node "$@"
+[ "$command" = "check-corrupt-db" ] && check_corrupt_db "$@"
 
 shift $((OPTIND-1))
 
