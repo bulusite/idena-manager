@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.6"
+VERSION="v0.2.7"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -699,7 +699,7 @@ installed_updates=0
 
 update_packages()
 {
-	if [ $installed_updates == 0 ]
+	if [ $((installed_updates)) -eq 0 ]
 	then
 		give_sudo_notification
 
@@ -727,8 +727,9 @@ install_required_packages()
 	if [ $((n_jq)) -gt 0 ]
 	then
 		update_packages
-
+		success_notification "Installing " "jq"
 		sudo apt-get -qq -y install jq > /dev/null
+		success_notification "Finished installing " "jq"
 	fi
 
 	email=$(get_email)
