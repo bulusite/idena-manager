@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.6"
+VERSION="v0.2.7"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -1207,6 +1207,7 @@ add()
 	while getopts "e:n:l:p:i:r:k:w:" opt; do
 		case "$opt" in
 		e)
+			install_required_packages
 			email=$OPTARG
 			write_json "email" "$email"
 			;;
@@ -1366,7 +1367,19 @@ setup_autocomplete()
 }
 
 case $1 in
-	add|set-notifications|disable-notifications|disable|enable|set-path|cron|status|generate-ssh)
+	add|set-path|cron|status)
+		command=$1
+		OPTIND=2
+		;;
+	regenerate|generate-ssh)
+		command=$1
+		OPTIND=2
+		;;
+	disable|enable)
+		command=$1
+		OPTIND=2
+		;;
+	set-notifications|disable-notifications)
 		command=$1
 		OPTIND=2
 		;;
