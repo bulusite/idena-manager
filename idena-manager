@@ -1204,10 +1204,10 @@ add()
 	email=""
 	num_instances=""
 	install_location=""
+
 	while getopts "e:n:l:p:i:r:k:w:" opt; do
 		case "$opt" in
 		e)
-			install_required_packages
 			email=$OPTARG
 			write_json "email" "$email"
 			;;
