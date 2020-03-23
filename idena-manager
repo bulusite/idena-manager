@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.8"
+VERSION="v0.2.9"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -874,6 +874,106 @@ download_node()
 	fi
 }
 
+change_online_status()
+{
+	status=$2
+
+	if [ "$status" != "online" ] && [ "$status" != "offline" ]
+	then
+		error_notification "You need to provide status"
+		exit 1
+	fi
+
+	nodes=("$@")
+	declare -A nodes_to_apply
+	for node_i in "${nodes[@]:1}"
+	do
+		if [ $((node_i)) -le 0 ]
+		then
+			continue
+		fi
+		nodes_to_apply["node$node_i"]=1
+	done
+
+	i=0
+	file_i=0
+	for node in $(get_json '.nodes[]?'); do
+		id=$(echo "$node" | jq -r '.id')
+		enabled=$(echo "$node" | jq -r '.enabled')
+		rpc_port=$(echo "$node" | jq -r '.rpc_port')
+		api_key=$(echo "$node" | jq -r '.api_key')
+		rpc_host=$(echo "$node" | jq -r '.rpc_host')
+
+		if [ $((enabled)) -eq 0 ]
+		then
+			i=$((i+1))
+			continue
+		fi
+
+		if [ "$status" == "online" ]
+		then
+			method="dna_becomeOnline"
+			method_id=2
+		else
+			method="dna_becomeOffline"
+			method_id=1
+		fi
+
+		if [ "${#nodes_to_apply[@]}" -gt 0 ]
+		then
+			if [[ ${nodes_to_apply["node$id"]} ]]
+			then
+				success_notification "Updating status to $status for Node ID " "$id"
+				data=$(jq -nc "{\
+						method: \"$method\",\
+						params: [{}],\
+						id: $((method_id)),\
+						key: \"$api_key\"\
+						}")
+
+				result=$(curl -s \
+					-H "Accept: application/json" \
+					-H "Content-Type:application/json" \
+					-X POST \
+					--data \
+					"$data" \
+					"http://$rpc_host:$rpc_port" | jq -r '.result')
+
+				if [ -n "$result" ]
+				then
+					success_notification "Successfully started changing to $status for Node ID $id"
+				else
+					error_notification "Failed to change status to $status for Node ID $id"
+				fi
+			fi
+		else
+			success_notification "Updating status to $status for Node ID " "$id"
+			data=$(jq -nc "{\
+					method: \"$method\",\
+					params: [{}],\
+					id: $((method_id)),\
+					key: \"$api_key\"\
+					}")
+
+			result=$(curl -s \
+				-H "Accept: application/json" \
+				-H "Content-Type:application/json" \
+				-X POST \
+				--data \
+				"$data" \
+				"http://$rpc_host:$rpc_port" | jq -r '.result')
+
+			if [ -n "$result" ]
+			then
+				success_notification "Successfully started changing to $status for Node ID $id"
+			else
+				error_notification "Failed to change status to $status for Node ID $id"
+			fi
+		fi
+		i=$((i+1))
+	done
+}
+
 do_update_nodes()
 {
 	latest_version=$(curl -s https://api.github.com/repos/idena-network/idena-go/releases/latest | \
@@ -1702,6 +1802,10 @@ case $1 in
 		command=$1
 		OPTIND=2
 		;;
+	change-online-status)
+		command=$1
+		OPTIND=2
+		;;
 	*)
 		OPTIND=1
 esac
@@ -1733,6 +1837,7 @@ esac
 [ "$command" = "restart" ] && restart_node "$@"
 [ "$command" = "check-corrupt-db" ] && check_corrupt_db "$@"
 [ "$command" = "migrate" ] && migrate "$@"
+[ "$command" = "change-online-status" ] && change_online_status "$@"
 
 shift $((OPTIND-1))
 
