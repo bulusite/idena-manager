@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.7"
+VERSION="v0.2.8"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -301,7 +301,7 @@ is_root_user()
 
 read_integer()
 {
-	# $1 - prompt text, $2 - min number - if empty no min, $3 - pre-entered value
+	# $1 - prompt text, $2 - min number - if empty no min, $3 - pre-entered value, $4 - max value
 	[ -n "$3" ] && number="$3"
 	while true; do
 		if [ -z "$number" ]
@@ -313,11 +313,29 @@ read_integer()
 		then
 			error_notification "Please enter valid number"
 			number=""
+		elif [ -n "$2" ] && [ -n "$4" ]
+		then
+			if ! [ $number -gt "$(($2))" ] || ! [ $number -lt "$(($4))" ]
+			then
+				error_notification "Please enter number larger than $2 and smaller than $4"
+				number=""
+			else
+				break
+			fi
 		elif [ -n "$2" ]
 		then
 			if ! [ $number -gt "$(($2))" ]
 			then
 				error_notification "Please enter number larger than $2"
+				number=""
+			else
+				break
+			fi
+		elif [ -n "$4" ]
+		then
+			if ! [ $number -lt "$(($4))" ]
+			then
+				error_notification "Please enter number smaller than $4"
 				number=""
 			else
 				break
@@ -993,7 +1011,6 @@ generate_configs()
 
 		if [ ! $((enabled)) -eq 1 ]
 		then
-			i=$((i+1))
 			continue
 		fi
 
@@ -1342,6 +1359,272 @@ add()
 	generate_configs
 }
 
+normalize_file_location()
+{
+	given_location=$1
+	real_file_location=$2
+
+	real_file_name=$(basename "$real_file_location")
+	real_dir_name=$(dirname "$real_file_location")
+
+	#success_notification "Real file name ($given_location) " "$real_file_name" " $real_file_location"
+
+	echo "$(get_realpath_location "$real_dir_name")"
+}
+
+get_existing_screen_details()
+{
+	pid=$1
+	full_command=$@
+
+	if [[ "$full_command" != "/"* ]]
+	then
+		instance_location=$(sudo readlink /proc/"$pid"/exe)
+		screen_location="${full_command%%idena-node-linux*}"
+		instance_dir=$(normalize_file_location "$screen_location" "$instance_location")
+		IFS=' ' read -r -a parameters <<< $(cut -d " " -f2- <<< "$full_command")
+	else
+		instance_location="${full_command%%idena-node-linux*}"
+		screen_location="$instance_location"
+		instance_dir=$(normalize_file_location "$screen_location" "$instance_location")
+		IFS=' ' read -r -a parameters <<< $(cut -d " " -f2- <<< "$full_command")
+	fi
+
+	instance="$instance_location ${parameters[@]}"
+
+	config_file=""
+	rpc_port=""
+	rpc_addr=""
+	ipfs_port=""
+	api_key=""
+	datadir_location=""
+	tpc_port=""
+
+	for param in "${parameters[@]}"; do
+		if [[ "$param" == *"="* ]]
+		then
+			delimiter="="
+
+		elif [[ "$param" == *" "* ]]
+		then
+			delimiter=" "
+		fi
+
+		param_name="${param%%$delimiter*}"
+
+		if [ "$param_name" == "--config" ]
+		then
+			config_file=$(cut -d "$delimiter" -f2 <<< "$param")
+
+			if ! test -f "$config_file"
+			then
+				filename=$(basename "$config_file")
+				config_file="$instance_dir/$filename"
+				if ! test -f "$config_file"
+				then
+					error_notification "Config file not found: " "$config_file"
+					continue
+				fi
+			fi
+		fi
+
+		if [ "$param_name" == "--apikey" ]
+		then
+			api_key=$(cut -d "$delimiter" -f2 <<< "$param")
+		fi
+
+		if [ "$param_name" == "--rpcaddr" ]
+		then
+			rpc_addr=$(cut -d "$delimiter" -f2 <<< "$param")
+		fi
+
+		if [ "$param_name" == "--rpcport" ]
+		then
+			rpc_port=$(cut -d "$delimiter" -f2 <<< "$param")
+		fi
+
+		if [ "$param_name" == "--ipfsport" ]
+		then
+			ipfs_port=$(cut -d "$delimiter" -f2 <<< "$param")
+		fi
+
+		if [ "$param_name" == "--port" ]
+		then
+			tcp_port=$(cut -d "$delimiter" -f2 <<< "$param")
+		fi
+
+		if [ "$param_name" == "--datadir" ]
+		then
+			datadir_location=$(cut -d "$delimiter" -f2 <<< "$param")
+		fi
+
+		if [ -n "$config_file" ] && test -f "$config_file"
+		then
+			config_content=$(cat "$config_file")
+			[ -z "$rpc_addr" ] && rpc_addr=$(echo "$config_content" | jq -r ".RPC.HTTPHost")
+			[ -z "$rpc_port" ] && rpc_port=$(echo "$config_content" | jq -r ".RPC.HTTPPort")
+			[ -z "$ipfs_port" ] && ipfs_port=$(echo "$config_content" | jq -r ".IpfsConf.IpfsPort")
+			[ -z "$ipfs_port" ] && ipfs_port=$(echo "$config_content" | jq -r ".IpfsConf.IpfsPort")
+			if [ -z "$tcp_port" ]
+			then
+				tcp_port=$(echo "$config_content" | jq -r ".P2P.ListenAddr")
+				tcp_port=$(cut -d ":" -f2- <<< "$tcp_port")
+			fi
+
+			if [ -z "$datadir_location" ]
+			then
+				datadir_location=$(echo "$config_content" | jq -r ".DataDir")
+			fi
+
+			if [ -z "$datadir_location" ]
+			then
+				datadir_location=$(echo "$config_content" | jq -r ".IpfsConf.DataDir")
+			fi
+		fi
+	done
+
+	json="{\"location\":\"$instance_location\",\"screen_location\":\"$screen_location\","
+	json="$json\"config_file\":\"$config_file\",\"api_key\":\"$api_key\",\"rpc_addr\":\"$rpc_addr\","
+	json="$json\"rpc_port\":\"$rpc_port\",\"ipfs_port\":\"$ipfs_port\",\"tcp_port\":\"$tcp_port\","
+	json="$json\"datadir\":\"$datadir_location\",\"instance_dir\":\"$instance_dir\",\"pid\":\"$pid\"}"
+
+	echo "$json"
+}
+
+migrate()
+{
+	OPTIND=2
+	install_location=""
+
+	existing_instances=( $(ps -ef | grep "idena-node-linux" | awk '{ print $2 }') )
+
+	instances=()
+	parsed_instances=()
+	for instance_id in "${existing_instances[@]}"; do
+		instance=$(ps -p "$instance_id" -o cmd=)
+
+		[ -z "$instance" ] && continue
+		[[ "$instance" == *"SCREEN"* ]] || [[ "$instance" == *"screen"* ]] && continue
+
+		parsed_instance=$(get_existing_screen_details $instance_id $instance)
+
+		instance_api_key=$(echo "$parsed_instance" | jq -r ".api_key")
+
+		found_in_current_instances=0
+		if [ -n "$instance_api_key" ] && [ "$instane_api_key" != "null" ]
+		then
+			for node in $(get_json '.nodes[]?'); do
+				api_key=$(echo "$node" | jq -r '.api_key')
+
+				if [ "$api_key" == "$instance_api_key" ]
+				then
+					found_in_current_instances=1
+					break
+				fi
+			done
+		fi
+
+		if [ $((found_in_current_instances)) -eq 1 ]
+		then
+			continue
+		fi
+
+		instances+=("$instance")
+		parsed_instances+=("$parsed_instance")
+	done
+
+	if [ $((${#instances[@]})) -eq 0 ]
+	then
+		error_notification "No running instance has been found"
+		exit 0
+	fi
+
+	for i in "${!instances[@]}"; do
+		success_notification "Instance ID $((i+1)): " "${instances[$i]}"
+	done
+
+	i_id=$(read_integer "Please enter Instance ID you want to migrate: " "0" "" $((${#instances[@]} + 1)))
+	i_id=$((i_id-1))
+
+	selected_instance="${instances[$i_id]}"
+	selected_config="${parsed_instances[$i_id]}"
+
+	success_notification "You selected: " "$selected_instance"
+
+	success_notification "\n\nPlease confirm these settings are correct:"
+	config_file=$(echo "$selected_config" | jq -r ".config_file")
+	[ -n "$config_file" ] && \
+		success_notification "\tConfig file location: " "$config_file"
+
+	api_key=$(echo "$selected_config" | jq -r ".api_key")
+	[ -n "$api_key" ] && \
+		success_notification "\tAPI Key: " "$api_key"
+
+#	rpc_addr=$(echo "$selected_config" | jq -r ".rpc_addr")
+#	[ -n "$rpc_addr" ] && \
+#		success_notification "\tRPC Address: " "$rpc_addr"
+
+	rpc_port_num=$(echo "$selected_config" | jq -r ".rpc_port")
+	[ -n "$rpc_port_num" ] && \
+		success_notification "\tRPC Port: " "$rpc_port_num"
+
+	listening_port_num=$(echo "$selected_config" | jq -r ".tcp_port")
+	[ -n "$listening_port_num" ] && \
+		success_notification "\tTCP Port: " "$listening_port_num"
+
+	ipfs_port_num=$(echo "$selected_config" | jq -r ".ipfs_port")
+	[ -n "$ipfs_port_num" ] && \
+		success_notification "\tIPFS Port: " "$ipfs_port_num"
+
+	datadir=$(echo "$selected_config" | jq -r ".datadir")
+	[ -n "$datadir" ] && \
+		success_notification "\tData Directory: " "$datadir"
+
+	install_location=$(echo "$selected_config" | jq -r ".instance_dir")
+	[ -n "$install_location" ] && \
+		success_notification "\tNode is in: " "$install_location"
+
+	if test -f "$datadir/keystore/nodekey";
+	then
+		wallet_key=$(cat "$datadir/keystore/nodekey")
+	else
+		error_notification "Failed to fetch data from this location"
+		exit 1
+	fi
+
+	pid=$(echo "$selected_config" | jq -r ".pid")
+
+	confirm=$(read_integer "Are you sure you want to migrate data? [1 = yes, 0 = no] " "-1" "" "2")
+
+	if [ $((confirm)) -eq 0 ]
+	then
+		exit 0
+	fi
+
+	kill "$pid"
+
+	node_i=$(get_json '.nodes | length')
+
+	write_json "nodes[$node_i]" "{\
+	id: $((node_i+1)),\
+	location: \"$install_location\",\
+	listen_port: $listening_port_num,\
+	ipfs_port: $ipfs_port_num,\
+	rpc_port: $rpc_port_num,\
+	api_key: \"$api_key\",\
+	wallet_key: \"$wallet_key\",\
+	rpc_host: \"localhost\",\
+	ipfs_profile: \"server\",\
+	enabled: \"1\"\
+	}" 1
+
+	success_notification "\n\nPleaes note: " "Remove any custom scripts you have (crontab, etc..)"
+	success_notification "Migration has succeeded"
+	echo -e "\n\n"
+
+	generate_configs
+}
+
 setup_autocomplete()
 {
 	# shellcheck disable=SC2046
@@ -1367,7 +1650,7 @@ setup_autocomplete()
 }
 
 case $1 in
-	add|set-path|cron|status)
+	add|set-path|cron|status|migrate)
 		command=$1
 		OPTIND=2
 		;;
@@ -1449,6 +1732,7 @@ esac
 [ "$command" = "start" ] && start_node "$@"
 [ "$command" = "restart" ] && restart_node "$@"
 [ "$command" = "check-corrupt-db" ] && check_corrupt_db "$@"
+[ "$command" = "migrate" ] && migrate "$@"
 
 shift $((OPTIND-1))
 

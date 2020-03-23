@@ -50,6 +50,7 @@ _completions()
 			COMMANDS+=("start")
 			COMMANDS+=("restart")
 			COMMANDS+=("check-corrupt-db")
+			COMMANDS+=("migrate")
 
 			COMPREPLY=($(compgen -W "${COMMANDS[*]}" "${COMP_WORDS[1]}"))
 			return
