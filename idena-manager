@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.9"
+VERSION="v0.2.10"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -896,7 +896,6 @@ change_online_status()
 	done
 
 	i=0
-	file_i=0
 	for node in $(get_json '.nodes[]?'); do
 		id=$(echo "$node" | jq -r '.id')
 		enabled=$(echo "$node" | jq -r '.enabled')
@@ -910,67 +909,66 @@ change_online_status()
 			continue
 		fi
 
-		if [ "$status" == "online" ]
-		then
-			method="dna_becomeOnline"
-			method_id=2
-		else
-			method="dna_becomeOffline"
-			method_id=1
-		fi
-
 		if [ "${#nodes_to_apply[@]}" -gt 0 ]
 		then
 			if [[ ${nodes_to_apply["node$id"]} ]]
 			then
-				success_notification "Updating status to $status for Node ID " "$id"
-				data=$(jq -nc "{\
-						method: \"$method\",\
-						params: [{}],\
-						id: $((method_id)),\
-						key: \"$api_key\"\
-						}")
-
-				result=$(curl -s \
-					-H "Accept: application/json" \
-					-H "Content-Type:application/json" \
-					-X POST \
-					--data \
-					"$data" \
-					"http://$rpc_host:$rpc_port" | jq -r '.result')
-
-				if [ -n "$result" ]
-				then
-					success_notification "Successfully started changing to $status for Node ID $id"
-				else
-					error_notification "Failed to change status to $status for Node ID $id"
-				fi
+				set_online_status "$status" "$id" "$rpc_host" "$rpc_port"
 			fi
 		else
-			success_notification "Updating status to $status for Node ID " "$id"
-			data=$(jq -nc "{\
-					method: \"$method\",\
-					params: [{}],\
-					id: $((method_id)),\
-					key: \"$api_key\"\
-					}")
-
-			result=$(curl -s \
-				-H "Accept: application/json" \
-				-H "Content-Type:application/json" \
-				-X POST \
-				--data \
-				"$data" \
-				"http://$rpc_host:$rpc_port" | jq -r '.result')
-
-			if [ -n "$result" ]
-			then
-				success_notification "Successfully started changing to $status for Node ID $id"
-			else
-				error_notification "Failed to change status to $status for Node ID $id"
-			fi
+			set_online_status "$status" "$id" "$rpc_host" "$rpc_port"
 		fi
 		i=$((i+1))
+	done
+}
+
+set_online_status()
+{
+	status="$1"
+	node_id="$2"
+	rpc_host="$3"
+	rpc_port="$4"
+
+	if [ "$status" == "online" ]
+	then
+		method="dna_becomeOnline"
+		method_id=2
+	else
+		method="dna_becomeOffline"
+		method_id=1
+	fi
+
+	while (true);
+	do
+		success_notification "Updating status to $status for Node ID " "$node_id"
+		data=$(jq -nc "{\
+				method: \"$method\",\
+				params: [{}],\
+				id: $((method_id)),\
+				key: \"$api_key\"\
+				}")
+
+		response=$(curl -s \
+			-H "Accept: application/json" \
+			-H "Content-Type:application/json" \
+			-X POST \
+			--data \
+			"$data" \
+			"http://$rpc_host:$rpc_port")
+
+		result=$(echo "$response" | jq -r '.result')
+
+		if [ -n "$result" ] && [ "$result" != "null" ]
+		then
+			success_notification " " "Successfully started changing to $status for Node ID $node_id" \
+				"Result: $result, Response: $response"
+			break
+		else
+			error_notification " " "Failed to change status to $status for Node ID $node_id" \
+				"Result: $result, Response: $response"
+			success_notification "Waiting one sec for retry"
+			sleep 1
+		fi
 	done
 }
 
