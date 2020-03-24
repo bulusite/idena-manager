@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.10"
+VERSION="v0.2.11"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -478,7 +478,7 @@ disable()
 		fi
 		i=$((i+1))
 	done
-	#write_json 'email' ""
+
 	generate_configs
 }
 
@@ -583,11 +583,37 @@ status()
 {
     success_notification "idena-manager version: " "$VERSION"
 
+    allow_node_update=$(get_json ".allow_node_update")
+	[ "$allow_node_update" == "null" ] && allow_node_update=""
+	[ -z "$allow_node_update" ] && allow_node_update=1
+	if [ $((allow_node_update)) == 0 ]
+	then
+		error_notification "Node automatic update is " "disabled"
+	else
+		success_notification "Node automatic update is " "enabled"
+	fi
+
+	allow_self_update=$(get_json ".allow_self_update")
+	[ "$allow_self_update" == "null" ] && allow_self_update=""
+	[ -z "$allow_self_update" ] && allow_self_update=1
+	if [ $((allow_self_update)) == 0 ]
+	then
+		error_notification "idena-manager automatic self update is " "disabled"
+	else
+		success_notification "idena-manager automatic self update is " "enabled"
+	fi
+
+    echo
+
     install_required_packages
+
+    columns="Node ID?|?Status?|?Uptime?|?API Key?|?RPC Port\n"
 
 	num_running=0
 	num_enabled=0
+	num_total=0
 	for node in $(get_json '.nodes[]?'); do
+		num_total=$((num_total+1))
 		enabled=$(echo "$node" | jq -r '.enabled')
 		id=$(echo "$node" | jq -r '.id')
 		api_key=$(echo "$node" | jq -r '.api_key')
@@ -596,56 +622,47 @@ status()
 
 		if [ $((enabled)) -ne 1 ]
 		then
-			error_notification \
-				"Node ID $id: \tStatus: " \
-				"Not active" \
-				"\t\t\tAPI key: $api_key\t\tRPC port: $rpc_port\t\tListening port: $listen_port"
+			columns="$columns$id?|?\e[0;39;41mNot Active\e[0m?|?0?|?$api_key?|?$rpc_port\n"
 			continue
 		fi
 
 		num_enabled=$((num_enabled + 1))
 
-		supervisor_status=$(sudo supervisorctl status "idena:node$id" | sed -e "s/  //g")
+		raw_supervisor_status=$(sudo supervisorctl status "idena:node$id")
+#		raw_supervisor_status="idena:node1                      RUNNING   pid 13053, uptime 2 days, 21:14:23"
+#		raw_supervisor_status="idena:node1                      STOPPED   Mar 24 09:25 PM"
+#		raw_supervisor_status="idena:node1                      FATAL     can't find command 'something'"
+#		raw_supervisor_status="idena:node1                      STARTING  pid 13053"
+
+		supervisor_status="${raw_supervisor_status//  /}"
 		status=$(echo "$supervisor_status" | cut -d " " -f 1 | sed -e "s/idena:node$id//g")
-		uptime=$(echo "$supervisor_status" | cut -d " " -f 5)
+		uptime=$(echo "$supervisor_status" | cut -d " " -f5-)
+
+		[ -z "$uptime" ] && uptime="0"
 
 		if [ "$status" == "RUNNING" ]
 		then
 			num_running=$((num_running + 1))
-			success_notification \
-				"Node ID $id:\tStatus: " \
-				"$status\t\tUptime: $uptime" \
-				"\tAPI key: $api_key\t\tRPC port: $rpc_port\t\tListening port: $listen_port"
+			columns="$columns$id?|?\e[0;32;49m$status\e[0m?|?$uptime?|?$api_key?|?$rpc_port\n"
 		elif [ "$status" == "STARTING" ]
 		then
 			num_running=$((num_running + 1))
-			success_notification \
-				"Node ID $id:\tStatus: " \
-				"$status" \
-				"\t\t\tAPI key: $api_key\t\tRPC port: $rpc_port\t\tListening port: $listen_port"
+			uptime="0"
+			columns="$columns$id?|?\e[0;32;49m$status\e[0m?|?$uptime?|?$api_key?|?$rpc_port\n"
+		elif [ "$status" == "STOPPED" ]
+		then
+			stopped_at=$(echo "$supervisor_status" | cut -d " " -f2-)
+			[ -z "$stopped_at" ] && stopped_at="0" || stopped_at="Stopped at: $stopped_at"
+			columns="$columns$id?|?\e[0;39;41m$status\e[0m?|?$stopped_at?|?$api_key?|?$rpc_port\n"
 		else
-			error_notification \
-				"Node ID $id:\tStatus: " \
-				"$status" \
-				"\t\t\t\tAPI key: $api_key\t\tRPC port: $rpc_port\t\tListening port: $listen_port"
+			columns="$columns$id?|?\e[0;39;41m$status\e[0m?|?0?|?$api_key?|?$rpc_port\n"
 		fi
 
 	done
 
-	if [ "$num_running" -gt 0 ]
+	if [ $((num_total)) -gt 0 ]
 	then
-		echo
-		success_notification "Please enable inbound traffic to your Listening port on the firewall."
-		success_notification "When connecting your Idena client, use RPC port for tunneling"
-
-		email=$(get_email)
-		if [ -n "$email" ]
-		then
-			success_notification \
-			"Your emails are going to arrive from this address (probably in spam, so you could create filters): " \
-			"$USER@$HOSTNAME" \
-			" Emails are being sent to $email"
-		fi
+		echo -e "$columns" | column -t -x -s "?"
 	fi
 
 	echo
@@ -1212,10 +1229,12 @@ generate_configs()
 			continue
 		fi
 
+		id=$(echo "$node" | jq -r '.id')
 		rpc_port=$(echo "$node" | jq -r '.rpc_port')
 		api_key=$(echo "$node" | jq -r '.api_key')
 		rpc_host=$(echo "$node" | jq -r '.rpc_host')
 		address=$(echo "$node" | jq -r '.address')
+		listen_port=$(echo "$node" | jq -r '.listen_port')
 
 		if [ -z "$address" ]
 		then
@@ -1226,9 +1245,25 @@ generate_configs()
 				write_json "nodes[$i].address" "$address"
 			fi
 		fi
+
+		success_notification "For Node $id please enable inbound traffic for $listen_port port on the firewall."
+		# shellcheck disable=SC2140
+		success_notification "When connecting your Idena client to Node $id, use $rpc_port port for tunneling, and "\
+"\"$api_key\" as your API key."
 	done
 
-	status
+	email=$(get_email)
+	if [ -n "$email" ]
+	then
+		success_notification \
+		"Your emails are going to arrive from this address (probably in spam, so you could create filters): " \
+		"$USER@$HOSTNAME" \
+		" Emails are being sent to $email"
+	fi
+
+	echo
+
+	#status
 }
 
 get_node_address()
@@ -1455,6 +1490,8 @@ add()
 	done
 
 	generate_configs
+
+	status
 }
 
 normalize_file_location()
@@ -1721,6 +1758,8 @@ migrate()
 	echo -e "\n\n"
 
 	generate_configs
+
+	status
 }
 
 setup_autocomplete()
