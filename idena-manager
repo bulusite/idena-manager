@@ -674,7 +674,7 @@ status()
 	done
 	success_notification "$delimiter"
 	success_notification \
-	"If this idena-manager is helping you, please donate to " "$donation_address" "" "center"
+	"If this idena-manager is helping you, please donate to this idena address " "$donation_address" "" "center"
 	success_notification "$delimiter"
 }
 
