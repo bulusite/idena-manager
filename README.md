@@ -1,6 +1,7 @@
 # Idena Manager
 
-If this idena-manager is helping you, please donate to this idena address ***0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005***
+If this idena-manager is helping you, please donate to this idena address: ***0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005***
+If you want more info or support, please join idena-manager Discord (https://discordapp.com/) server: https://discord.gg/8c6dqX
 
 ## Description
 This script is made to manage your node instances on VPS servers. Currently only Debian distributions are
