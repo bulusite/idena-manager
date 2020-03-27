@@ -1,6 +1,6 @@
 # Idena Manager
 
- - If this idena-manager is helping you, please donate to this idena address: ***0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005***
+ - If this idena-manager is helping you, please donate to this idena address: ***0x078dbf1f37d2f4561600c4d9de49bf3e498657ae***
  - If you want more info or support, please join idena-manager Discord (https://discordapp.com/) server: https://discord.gg/BqsDvAk
 
 ## Description
