@@ -4,7 +4,7 @@
 verbose=0
 command=""
 VERSION="v0.2.12"
-donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
+donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
 #trap 'kill $(jobs -p)' EXIT
