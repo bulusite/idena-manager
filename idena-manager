@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.11"
+VERSION="v0.2.12"
 donation_address="0x5debe0ac6cb3f40b08133b1e2d7cb11c83b06005"
 gpi="17508755" # git project ID
 
@@ -872,11 +872,11 @@ get_node_file_version()
 
 download_node()
 {
-	v="$1"
-	download_location="$2"
+	download_link="$1"
+	v="$2"
+	download_location="$3"
 
-	if wget -q -nv -O \
-		"$download_location" "https://github.com/idena-network/idena-go/releases/download/v$v/idena-node-linux-$v"
+	if wget -q -nv -O "$download_location" "$download_link"
 	then
 		chmod +x "$download_location"
 		new_file_version=$(get_node_file_version "$download_location")
@@ -991,14 +991,24 @@ set_online_status()
 
 do_update_nodes()
 {
-	latest_version=$(curl -s https://api.github.com/repos/idena-network/idena-go/releases/latest | \
-		jq -r '.tag_name'| cut -d "v" -f 2)
+	git_api_result=$(curl -s https://api.github.com/repos/idena-network/idena-go/releases/latest)
+
+	latest_version=$(echo "$git_api_result" | jq -r '.tag_name'| cut -d "v" -f 2)
 
 	if [ -z "$latest_version" ] || [ "$latest_version" == "null" ]
 	then
 		error_notification "Failed to fetch latest node version"
 		return 0
 	fi
+
+	download_link=""
+	for link in $(echo "$git_api_result" | jq -r '.assets[]?.browser_download_url'); do
+		if [[ "$link" == *"-linux-"* ]]
+		then
+			download_link="$link"
+			break
+		fi
+	done
 
 	for node in $(get_json '.nodes[]?'); do
 		id=$(echo "$node" | jq -r '.id')
@@ -1010,7 +1020,7 @@ do_update_nodes()
 			then
 				supervisor_stop "idena:node$id"
 				success_notification "Starting node update in $location to: " "$latest_version"
-				download_node "$latest_version" "$location/idena-node-linux-latest-temp"
+				download_node "$download_link" "$latest_version" "$location/idena-node-linux-latest-temp"
 				success=$?
 				if [ $success == 1 ]
 				then
@@ -1024,7 +1034,7 @@ do_update_nodes()
 		else
 			supervisor_stop "idena:node$id"
 			success_notification "Update node in $location to: " "$latest_version"
-			download_node "$latest_version" "$location/idena-node-linux-latest-temp"
+			download_node "$download_link" "$latest_version" "$location/idena-node-linux-latest-temp"
 			success=$?
 			if [ $success == 1 ]
 			then
@@ -1504,12 +1514,14 @@ normalize_file_location()
 
 	#success_notification "Real file name ($given_location) " "$real_file_name" " $real_file_location"
 
+	# shellcheck disable=SC2005
 	echo "$(get_realpath_location "$real_dir_name")"
 }
 
 get_existing_screen_details()
 {
 	pid=$1
+	# shellcheck disable=SC2124
 	full_command=$@
 
 	if [[ "$full_command" != "/"* ]]
@@ -1517,15 +1529,17 @@ get_existing_screen_details()
 		instance_location=$(sudo readlink /proc/"$pid"/exe)
 		screen_location="${full_command%%idena-node-linux*}"
 		instance_dir=$(normalize_file_location "$screen_location" "$instance_location")
+		# shellcheck disable=SC2046
 		IFS=' ' read -r -a parameters <<< $(cut -d " " -f2- <<< "$full_command")
 	else
 		instance_location="${full_command%%idena-node-linux*}"
 		screen_location="$instance_location"
 		instance_dir=$(normalize_file_location "$screen_location" "$instance_location")
+		# shellcheck disable=SC2046
 		IFS=' ' read -r -a parameters <<< $(cut -d " " -f2- <<< "$full_command")
 	fi
 
-	instance="$instance_location ${parameters[@]}"
+	instance="$instance_location ${parameters[*]}"
 
 	config_file=""
 	rpc_port=""
@@ -1631,6 +1645,8 @@ migrate()
 	OPTIND=2
 	install_location=""
 
+	# shellcheck disable=SC2207
+	# shellcheck disable=SC2009
 	existing_instances=( $(ps -ef | grep "idena-node-linux" | awk '{ print $2 }') )
 
 	instances=()
@@ -1641,12 +1657,12 @@ migrate()
 		[ -z "$instance" ] && continue
 		[[ "$instance" == *"SCREEN"* ]] || [[ "$instance" == *"screen"* ]] && continue
 
-		parsed_instance=$(get_existing_screen_details $instance_id $instance)
+		parsed_instance=$(get_existing_screen_details "$instance_id" "$instance")
 
 		instance_api_key=$(echo "$parsed_instance" | jq -r ".api_key")
 
 		found_in_current_instances=0
-		if [ -n "$instance_api_key" ] && [ "$instane_api_key" != "null" ]
+		if [ -n "$instance_api_key" ] && [ "$instance_api_key" != "null" ]
 		then
 			for node in $(get_json '.nodes[]?'); do
 				api_key=$(echo "$node" | jq -r '.api_key')
