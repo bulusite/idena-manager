@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.12"
+VERSION="v0.2.13"
 donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
@@ -789,7 +789,7 @@ install_required_packages()
 
 		if [ $((n_superlance)) == 0 ]
 		then
-			if ! (pip list --format=legacy --disable-pip-version-check | grep -E "^superlance" >/dev/null); then
+			if ! (pip list --format=freeze --disable-pip-version-check | grep -E "^superlance" >/dev/null); then
 				n_superlance=1
 			fi
 		fi
