@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.13"
+VERSION="v0.2.14"
 donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
@@ -57,13 +57,103 @@ show_help()
 
 set_notifications()
 {
-	email=$2
+	local my_email=$2
 
 	install_required_packages
 
-	write_json 'email' "$email"
+	write_json 'email' "$my_email"
 
 	generate_configs
+
+	if [ -n "$my_email" ]
+	then
+		send_confirmation_email
+	fi
+}
+
+send_confirmation_email()
+{
+	success_notification "" "Trying to send test email for confirmation." " This could take up to a minute"
+	mailtemp=$(mktemp)
+	sendmail "$my_email" <<EOF
+Subject: Iden Node email Notifications were setup successfully
+To: $my_email
+From: Idena Manager <$USER@$HOSTNAME>
+Content-Type: text/html; charset="utf-8"
+
+<html>
+	<head>
+		<style type="text/css">
+			body {
+				color:#53565C;
+				background-color:#F5F6F7;
+			}
+
+			div.logo {
+				margin:auto;
+				text-align:center;
+				margin-bottom: 35px;
+			}
+
+			div.logo>img {
+				width:200px;
+			}
+
+			div {
+				width:100%;
+				font-size:14px;
+				margin-bottom:35px;
+			}
+
+			div h1 {
+				width:100%;
+				text-align:center;
+				font-size:22px;
+				font-weight:bold;
+			}
+
+			div.center {
+				text-align:center;
+			}
+
+			div p {
+				margin:auto;
+				margin-bottom:20px;
+				width:80%;
+			}
+
+			div p.donation {
+				font-weight:bold;
+				font-size:16px;
+				color:#000000;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="logo">
+			<img src="https://idena-manager.net/images/logo200.png" />
+		</div>
+		<div class="center">
+			<h1>Idena Manager</h1>
+		</div>
+		<div>
+			<p>
+				Hello,<br>
+				you successfully setup your email notifications for idena-manager.
+			</p>
+			<p>
+				idena-manager will notify you only in case it hasn't been to handle some kind of error
+				on node instance. It won't bother you in all other cases where it managed to fix error by iteself.
+			</p>
+		</div>
+		<div class="center">
+			<p>Please support the project and donate to this idena address:<p>
+			<p class="donation">$donation_address</p>
+		</div>
+	</body>
+</html>
+EOF
+	success_notification "Email has been sent successfully. If it's not in your inbox, please check spam as well"
 }
 
 enable_self_update()
@@ -277,18 +367,24 @@ write_notification()
 	[ -z "$background_color" ] && background_color="49"
 	[ -z "$foreground_color" ] && foreground_color="39"
 
-	columns="$(tput cols)"
-	# shellcheck disable=SC2027
-	formatted_message=$(echo -e "$prefix\e[0;"$foreground_color";"$background_color"m$message\e[0m$suffix")
-
 	len=0
 
-	if [ "$alignment" == "center" ]
+	if [ -n "$TERM" ]
 	then
-		len=$(( (${#formatted_message} + columns) / 2))
-	elif [ "$alignment" == "right" ]
-	then
-		len=$((columns))
+		# shellcheck disable=SC2027
+		formatted_message=$(echo -e "$prefix\e[0;"$foreground_color";"$background_color"m$message\e[0m$suffix")
+
+		if [ "$alignment" == "center" ]
+		then
+			columns="$(tput cols)"
+			len=$(( (${#formatted_message} + columns) / 2))
+		elif [ "$alignment" == "right" ]
+		then
+			columns="$(tput cols)"
+			len=$((columns))
+		fi
+	else
+		formatted_message=$(echo -e "$prefix $message $suffix")
 	fi
 
 	printf "%*s\n" $len "$formatted_message" >&2
@@ -557,7 +653,7 @@ supervisor_stop()
 		if test -f "/etc/supervisor/conf.d/idena.conf"; then
         	if [ -z "$1" ]
         	then
-        		sudo supervisorctl stop all > /dev/null
+        		sudo supervisorctl stop idena:* > /dev/null
 			else
 				sudo supervisorctl stop "$1" > /dev/null
 			fi
@@ -687,6 +783,8 @@ generate_ssh_tunnel()
 		nodes_to_enable["node$node_i"]=1
 	done
 
+	username=$(get_user_executor)
+
 	install_required_packages
 
 	i=0
@@ -702,13 +800,13 @@ generate_ssh_tunnel()
 			then
 				success_notification \
 					"Node $id SSH tunnel: " \
-					"ssh -N -L $rpc_port:$rpc_host:$rpc_port $USER@server_ip" \
+					"ssh -N -L $rpc_port:$rpc_host:$rpc_port $username@server_ip" \
 					"API Key: $api_key"
 			fi
 		else
 			success_notification \
 				"Node $id SSH tunnel: " \
-				"ssh -N -L $rpc_port:$rpc_host:$rpc_port $USER@server_ip" \
+				"ssh -N -L $rpc_port:$rpc_host:$rpc_port $username@server_ip" \
 				"\tAPI Key you need to use: $api_key"
 		fi
 		i=$((i+1))
@@ -720,13 +818,19 @@ supervisor_start_idena()
 	supervisor_start "idena:*"
 }
 
+gave_sudo_notification=0
+
 give_sudo_notification()
 {
 	if ! is_root_user
 	then
-		mess="You're running this script as a non-root user. This script needs to install some packages for \
+		if [ $((gave_sudo_notification)) -eq 0 ]
+		then
+			mess="You're running this script as a non-root user. This script needs to install some packages for \
 it to work without any problems, so you might be asked to enter your root password during installation"
-		write_notification "43" "30" "" "$mess" "\n"
+			write_notification "43" "30" "" "$mess" "\n"
+			gave_sudo_notification=1
+		fi
 	fi
 }
 
@@ -746,6 +850,37 @@ update_packages()
 	fi
 }
 
+adjust_supervisor_sudo_permissions()
+{
+	if ! is_root_user
+	then
+
+		supervisor_adjusted=$(get_json '.supervisor_adjusted')
+
+		if [ -z "$supervisor_adjusted" ] || [ "$supervisor_adjusted" == "null" ] || [ $((supervisor_adjusted)) -ne 1 ]
+		then
+			supervisor_adjusted=0
+		fi
+
+		if [ $((supervisor_adjusted)) -eq 0 ]
+		then
+			give_sudo_notification
+
+			current_user=$(get_user_executor)
+			# shellcheck disable=SC2230
+			supervisorctl_location=$(sudo which supervisorctl)
+
+			if ! sudo cat /etc/sudoers 2>&1 | grep "$current_user" | grep -q "$supervisorctl_location"
+			then
+				echo -e "$current_user\tALL = (root) NOPASSWD: $supervisorctl_location" | \
+				sudo EDITOR='tee -a' visudo 1>/dev/null
+			fi
+
+			write_json 'supervisor_adjusted' 1
+		fi
+	fi
+}
+
 install_required_packages()
 {
 	n_jq=0
@@ -753,6 +888,7 @@ install_required_packages()
 	n_pip=0
 	n_sendmail=0
 	n_superlance=0
+	n_multitail=0
 
 	if ! hash jq 2>/dev/null;
 	then
@@ -767,11 +903,24 @@ install_required_packages()
 		success_notification "[$(date)] Finished installing " "jq"
 	fi
 
+	if ! hash jq 2>/dev/null;
+	then
+		error_notification "Failed to install jq, please try again or contact support!"
+		exit 1
+	fi
+
 	email=$(get_email)
 
 	if ! hash supervisorctl 2>/dev/null;
 	then
 		n_supervisor=1
+	else
+		adjust_supervisor_sudo_permissions
+	fi
+
+	if ! hash multitail 2>/dev/null;
+	then
+		n_multitail=1
 	fi
 
 	if [ -n "$email" ]
@@ -795,13 +944,19 @@ install_required_packages()
 		fi
 	fi
 
-	if [ $((n_supervisor + n_pip + n_sendmail + n_superlance)) -gt 0 ]
+	if [ $((n_supervisor + n_pip + n_sendmail + n_superlance + n_multitail)) -gt 0 ]
 	then
 		update_packages
 
 		if [ $((n_supervisor)) == 1 ]
 		then
 			sudo apt-get -qq -y install supervisor > /dev/null
+			adjust_supervisor_sudo_permissions
+		fi
+
+		if [ $((n_multitail)) == 1 ]
+		then
+			sudo apt-get -qq -y install multitail > /dev/null
 		fi
 
 		if [ $((n_pip)) == 1 ]
@@ -824,13 +979,30 @@ install_required_packages()
 	setup_autocomplete 0
 }
 
+read_stderr_logs()
+{
+	read_logs "stderr" "$@"
+}
+
+read_output_logs()
+{
+	read_logs "output" "$@"
+}
+
+read_stdout_logs()
+{
+	read_logs "stdout" "$@"
+}
+
 read_logs()
 {
 	install_required_packages
 
-	nodes=("$@")
+	log_type="$1"
+
+	nodes=("${@:3}")
 	declare -A nodes_to_read
-	for node_i in "${nodes[@]:1}"
+	for node_i in "${nodes[@]:0}"
 	do
 		nodes_to_read["node$node_i"]=1
 	done
@@ -842,24 +1014,60 @@ read_logs()
 	for node in $(get_json '.nodes[]?'); do
 		id=$(echo "$node" | jq -r '.id')
 		location=$(echo "$node" | jq -r '.location')
+		read_this=0
 
 		if [ "${#nodes_to_read[@]}" -gt 0 ]
 		then
 			if [[ ${nodes_to_read["node$id"]} ]]
 			then
-				success_notification "Reading log for Node ID " "$id"
-				files[$file_i]="$location/log_stderr_node$id.log"
-				file_i=$((file_i+1))
+				read_this=1
 			fi
 		else
-			success_notification "Reading log for Node ID " "$id"
-			files[$file_i]="$location/log_stderr_node$id.log"
-			file_i=$((file_i+1))
+			read_this=1
 		fi
+
+		if [ $((read_this)) -eq 1 ]
+		then
+			files[$file_i]="-t" file_i=$((file_i+1))
+			if [ "$log_type" == "stderr" ]
+			then
+				files[$file_i]="Node $id Error Log"
+				file_i=$((file_i+1))
+				files[$file_i]="-cT"
+				file_i=$((file_i+1))
+				files[$file_i]="ANSI"
+				file_i=$((file_i+1))
+				files[$file_i]="$location/log_stderr_node$id.log"
+				file_i=$((file_i+1))
+			elif [ "$log_type" == "output" ]
+			then
+				files[$file_i]="Node $id Output Log"
+				file_i=$((file_i+1))
+				files[$file_i]="-cS"
+				file_i=$((file_i+1))
+				files[$file_i]="squid"
+				file_i=$((file_i+1))
+				files[$file_i]="$location/datadir-node$id/logs/output.log"
+				file_i=$((file_i+1))
+			elif [ "$log_type" == "stdout" ]
+			then
+				files[$file_i]="Node $id Log"
+				file_i=$((file_i+1))
+				files[$file_i]="-cT"
+				file_i=$((file_i+1))
+				files[$file_i]="ANSI"
+				file_i=$((file_i+1))
+				files[$file_i]="$location/log_stdout_node$id.log"
+				file_i=$((file_i+1))
+			fi
+		fi
+
+		read_this=0
 		i=$((i+1))
 	done
 
-	tail -f "${files[@]}"
+	multitail "${files[@]}"
+	clear
 }
 
 get_node_file_version()
@@ -1010,6 +1218,9 @@ do_update_nodes()
 		fi
 	done
 
+	should_update=0
+	download_location=""
+
 	for node in $(get_json '.nodes[]?'); do
 		id=$(echo "$node" | jq -r '.id')
 		location=$(echo "$node" | jq -r '.location')
@@ -1018,34 +1229,41 @@ do_update_nodes()
 			node_version=$(get_node_file_version "$location/idena-node-linux-latest")
 			if [ ! "$node_version" = "$latest_version" ]
 			then
-				supervisor_stop "idena:node$id"
-				success_notification "Starting node update in $location to: " "$latest_version"
-				download_node "$download_link" "$latest_version" "$location/idena-node-linux-latest-temp"
-				success=$?
-				if [ $success == 1 ]
-				then
-					mv -f "$location/idena-node-linux-latest-temp" "$location/idena-node-linux-latest"
-					success_notification "Finished node update in $location to: " "$latest_version"
-				else
-					error_notification "Failed to download node file: " "$location/idena-node-linux-latest"
-				fi
-				supervisor_start "idena:node$id"
+				should_update=1
+				download_location="$location/idena-node-linux-latest-temp"
+				break
 			fi
 		else
-			supervisor_stop "idena:node$id"
-			success_notification "Update node in $location to: " "$latest_version"
-			download_node "$download_link" "$latest_version" "$location/idena-node-linux-latest-temp"
-			success=$?
-			if [ $success == 1 ]
-			then
-				mv -f "$location/idena-node-linux-latest-temp" "$location/idena-node-linux-latest"
-				success_notification "Finished node update in $location to: " "$latest_version"
-			else
-				error_notification "Failed to download node file: " "$location/idena-node-linux-latest"
-			fi
-			supervisor_start "idena:node$id"
+			should_update=1
+			download_location="$location/idena-node-linux-latest-temp"
+			break
 		fi
 	done
+
+	if [ $((should_update)) -eq 1 ]
+	then
+		supervisor_stop
+		download_node "$download_link" "$latest_version" "$download_location"
+		success=$?
+		if [ $success == 1 ]
+		then
+			success_notification "Finished downloading node binary: " "$latest_version"
+		else
+			error_notification "Failed to download node binary"
+			return
+		fi
+
+		for node in $(get_json '.nodes[]?'); do
+			id=$(echo "$node" | jq -r '.id')
+			location=$(echo "$node" | jq -r '.location')
+
+			cp -f "$download_location" "$location/idena-node-linux-latest"
+		done
+
+		rm "$download_location"
+		supervisor_start
+		success_notification "All nodes have been updated to: " "$latest_version"
+	fi
 }
 
 node_update()
@@ -1072,9 +1290,12 @@ node_update()
 	less_than="$((next_validation - 1800))"
 	greater_than="$((next_validation + 3600))"
 
-	if (( timestamp < less_than )) || (( timestamp > greater_than ));
+	if [ $((timestamp)) -lt $((less_than)) ] || [ $((timestamp)) -gt $((greater_than)) ] || [ "$2" == "force" ]
 	then
 		do_update_nodes
+	else
+		success_notification "This is not the best time to update node instances since validation is happening soon"
+		success_notification "If you still want to run the update, run idena-manager node-update force"
 	fi
 }
 
@@ -1125,8 +1346,14 @@ self_update()
 
 generate_configs()
 {
+	# shellcheck disable=SC2046
+	manager_location=$(dirname $(get_realpath_location "$0"))
+	manager_self=$(get_realpath_location "$0")
+
 	supervisor_group="[group:idena]\nprograms="
 	supervisor_conf=""
+
+	username=$(get_user_executor)
 
 	supervisor_stop
 
@@ -1185,14 +1412,17 @@ generate_configs()
 		supervisor_conf=$supervisor_conf"directory=$location\n"
 		supervisor_conf=$supervisor_conf"command=$location/idena-node-linux-latest "
 		supervisor_conf=$supervisor_conf"--config=$location/config-%(program_name)s.json --apikey=$api_key\n"
-		supervisor_conf=$supervisor_conf"user=$USER\n"
+		if [ -n "$username" ]
+		then
+			supervisor_conf=$supervisor_conf"user=$username\n"
+		fi
 		supervisor_conf=$supervisor_conf"loglevel=info\n"
 		supervisor_conf=$supervisor_conf"redirect_stderr=false\n"
-		supervisor_conf=$supervisor_conf"stdout_logfile=$location/log_stdout_%(program_name)s.log\n"
-		supervisor_conf=$supervisor_conf"stdout_logfile_maxbytes=1GB\n"
-		supervisor_conf=$supervisor_conf"stdout_logfile_backups=10\n"
-		supervisor_conf=$supervisor_conf"stdout_capture_maxbytes=1GB\n"
-		supervisor_conf=$supervisor_conf"stdout_events_enabled=false\n"
+		supervisor_conf=$supervisor_conf"#stdout_logfile=$location/log_stdout_%(program_name)s.log\n"
+		supervisor_conf=$supervisor_conf"#stdout_logfile_maxbytes=1GB\n"
+		supervisor_conf=$supervisor_conf"#stdout_logfile_backups=10\n"
+		supervisor_conf=$supervisor_conf"#stdout_capture_maxbytes=1GB\n"
+		supervisor_conf=$supervisor_conf"#stdout_events_enabled=false\n"
 		supervisor_conf=$supervisor_conf"stderr_logfile=$location/log_stderr_%(program_name)s.log\n"
 		supervisor_conf=$supervisor_conf"stderr_logfile_maxbytes=1GB\n"
 		supervisor_conf=$supervisor_conf"stderr_logfile_backups=10\n"
@@ -1213,7 +1443,7 @@ generate_configs()
 		supervisor_conf=$supervisor_conf"\n"
 		supervisor_conf=$supervisor_conf"[eventlistener:fatalmailbatch]\n"
 		# shellcheck disable=SC2089
-		supervisor_conf=$supervisor_conf"command=fatalmailbatch --toEmail=\"$email\" --fromEmail=\"$USER@$HOSTNAME\"\n"
+		supervisor_conf=$supervisor_conf"command=fatalmailbatch --toEmail=\"$email\" --fromEmail=\"$username@$HOSTNAME\"\n"
 		supervisor_conf=$supervisor_conf"events=PROCESS_STATE,TICK_60"
 	fi
 
@@ -1267,7 +1497,7 @@ generate_configs()
 	then
 		success_notification \
 		"Your emails are going to arrive from this address (probably in spam, so you could create filters): " \
-		"$USER@$HOSTNAME" \
+		"$username@$HOSTNAME" \
 		" Emails are being sent to $email"
 	fi
 
@@ -1321,6 +1551,8 @@ setup_crontab()
 	ssu="idena-manager-should-self-update"
 	suim="self-updater-idena-manager"
 
+	user=$(get_user_executor)
+
 	if crontab -l 2>&1 | grep -q 'idena-manager update'
 	then
 		crontab -l | grep -v 'idena-manager update' | crontab -
@@ -1364,12 +1596,14 @@ add()
 	email=""
 	num_instances=""
 	install_location=""
+	changed_email=0
 
 	while getopts "e:n:l:p:i:r:k:w:" opt; do
 		case "$opt" in
 		e)
 			email=$OPTARG
 			write_json "email" "$email"
+			changed_email=1
 			;;
 		n)
 			num_instances=$OPTARG
@@ -1500,6 +1734,11 @@ add()
 	done
 
 	generate_configs
+
+	if [ -n "$email" ] && [ $((changed_email)) -eq 1 ]
+	then
+		send_confirmation_email
+	fi
 
 	status
 }
@@ -1802,6 +2041,23 @@ setup_autocomplete()
 	fi
 }
 
+get_user_executor()
+{
+	user_executor=$(get_json '.user?')
+
+	if [ -z "$user_executor" ] || [ "$user_executor" == "null" ]
+	then
+		if [ -n "$USER" ]
+		then
+			write_json 'user' "$USER"
+			user_executor="$USER"
+		fi
+	fi
+
+	echo "$user_executor"
+}
+
+
 case $1 in
 	add|set-path|cron|status|migrate)
 		command=$1
@@ -1823,7 +2079,7 @@ case $1 in
 		command=$1
 		OPTIND=2
 		;;
-	read-logs)
+	read-logs|error-logs|output-logs)
 		command=$1
 		OPTIND=2
 		;;
@@ -1859,6 +2115,10 @@ case $1 in
 		command=$1
 		OPTIND=2
 		;;
+	adjust-sudo-permissions)
+		command=$1
+		OPTIND=2
+		;;
 	*)
 		OPTIND=1
 esac
@@ -1883,7 +2143,9 @@ esac
 [ "$command" = "status" ] && status "$@"
 [ "$command" = "generate-ssh" ] && generate_ssh_tunnel "$@"
 [ "$command" = "change-api-key" ] && change_api_key "$@"
-[ "$command" = "read-logs" ] && read_logs "$@"
+[ "$command" = "read-logs" ] && read_stdout_logs "$@"
+[ "$command" = "output-logs" ] && read_output_logs "$@"
+[ "$command" = "error-logs" ] && read_stderr_logs "$@"
 [ "$command" = "setup-autocomplete" ] && setup_autocomplete
 [ "$command" = "stop" ] && stop_node "$@"
 [ "$command" = "start" ] && start_node "$@"
@@ -1891,6 +2153,7 @@ esac
 [ "$command" = "check-corrupt-db" ] && check_corrupt_db "$@"
 [ "$command" = "migrate" ] && migrate "$@"
 [ "$command" = "change-online-status" ] && change_online_status "$@"
+[ "$command" = "adjust-sudo-permissions" ] && adjust_supervisor_sudo_permissions
 
 shift $((OPTIND-1))
 
