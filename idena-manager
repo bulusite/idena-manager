@@ -43,11 +43,13 @@ show_help()
 	"\t\t\t\t\t\t\t" "Example: disable 1 2 - will disable node 1 and node 2" "\n" \
 	"" "13) read-logs [node [node [node]]]" "\t\t\t" "Read and listen log files. If no node identifier sent, all " \
 	"will be included in logs. \n" \
+	"\t\t\t\t\t\t\t" "Example: read-logs 1 2 - this will listen on logs for node 1 and 2" "\n" \
 	"" "14) output-logs [node [node [node]]]" "\t\t\t" "Read and listen node output log files. If no node identifier sent, all " \
 	"will be included in logs. \n" \
+	"\t\t\t\t\t\t\t" "Example: output-logs 1 2 - this will listen on logs for node 1 and 2" "\n" \
 	"" "15) error-logs [node [node [node]]]" "\t\t\t" "Read and listen node error log files. If no node identifier sent, all " \
 	"will be included in logs. \n" \
-	"\t\t\t\t\t\t\t" "Example: read-logs 1 2 - this will listen on logs for node 1 and 2" "\n" \
+	"\t\t\t\t\t\t\t" "Example: error-logs 1 2 - this will listen on logs for node 1 and 2" "\n" \
 	"" "16) change-api-key <node_id> [api_key]" "\t\t" "Change API key for a node instance. " "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 - this will ask you for a key and change it on Node ID 1" "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 \"idena\" - this will change API key to \"idena\" on Node ID 1" "\n" \
