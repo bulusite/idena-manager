@@ -41,15 +41,19 @@ show_help()
 	"" "12) disable [node [node [node]]]" "\t\t\t" "Disable node server. If no node identificator is sent, all nodes "\
 	"will be disabled. " "\n" \
 	"\t\t\t\t\t\t\t" "Example: disable 1 2 - will disable node 1 and node 2" "\n" \
-	"" "13) read-logs [node [node [node]]]" "\t\t\t" "Read and listen log files. I no node identifier sent, all " \
+	"" "13) read-logs [node [node [node]]]" "\t\t\t" "Read and listen log files. If no node identifier sent, all " \
+	"will be included in logs. \n" \
+	"" "14) output-logs [node [node [node]]]" "\t\t\t" "Read and listen node output log files. If no node identifier sent, all " \
+	"will be included in logs. \n" \
+	"" "15) error-logs [node [node [node]]]" "\t\t\t" "Read and listen node error log files. If no node identifier sent, all " \
 	"will be included in logs. \n" \
 	"\t\t\t\t\t\t\t" "Example: read-logs 1 2 - this will listen on logs for node 1 and 2" "\n" \
-	"" "14) change-api-key <node_id> [api_key]" "\t\t" "Change API key for a node instance. " "\n" \
+	"" "16) change-api-key <node_id> [api_key]" "\t\t" "Change API key for a node instance. " "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 - this will ask you for a key and change it on Node ID 1" "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 \"idena\" - this will change API key to \"idena\" on Node ID 1" "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 \"\" - this will generate random API key and apply it to Node ID 1" \
 	"\n" \
-	"" "15) status" "\t\t\t\t\t\t" "Get status of all node instances (including API keys and ports)" "\n" \
+	"" "17) status" "\t\t\t\t\t\t" "Get status of all node instances (including API keys and ports)" "\n" \
 	"\n" \
 	"Please note: only one email for all instances can be set. In case you add new server and set another email" \
 	"during installation, that email will be used for all other instances as well"
@@ -1418,11 +1422,11 @@ generate_configs()
 		fi
 		supervisor_conf=$supervisor_conf"loglevel=info\n"
 		supervisor_conf=$supervisor_conf"redirect_stderr=false\n"
-		supervisor_conf=$supervisor_conf"#stdout_logfile=$location/log_stdout_%(program_name)s.log\n"
-		supervisor_conf=$supervisor_conf"#stdout_logfile_maxbytes=1GB\n"
-		supervisor_conf=$supervisor_conf"#stdout_logfile_backups=10\n"
-		supervisor_conf=$supervisor_conf"#stdout_capture_maxbytes=1GB\n"
-		supervisor_conf=$supervisor_conf"#stdout_events_enabled=false\n"
+		supervisor_conf=$supervisor_conf"stdout_logfile=$location/log_stdout_%(program_name)s.log\n"
+		supervisor_conf=$supervisor_conf"stdout_logfile_maxbytes=1GB\n"
+		supervisor_conf=$supervisor_conf"stdout_logfile_backups=10\n"
+		supervisor_conf=$supervisor_conf"stdout_capture_maxbytes=1GB\n"
+		supervisor_conf=$supervisor_conf"stdout_events_enabled=false\n"
 		supervisor_conf=$supervisor_conf"stderr_logfile=$location/log_stderr_%(program_name)s.log\n"
 		supervisor_conf=$supervisor_conf"stderr_logfile_maxbytes=1GB\n"
 		supervisor_conf=$supervisor_conf"stderr_logfile_backups=10\n"
