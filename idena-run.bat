@@ -21,9 +21,9 @@ if exist "%ProgramFiles%\PuTTY\putty.exe" (
 )
 
 if %RUN_AS_USER% == "" (
-    start "Idena" /B "C:\Users\%username%\AppData\Local\Programs\idena-desktop\Idena.exe"
+    start "Idena" /B "%USERPROFILE%\AppData\Local\Programs\idena-desktop\Idena.exe"
 ) else (
-    start "Idena" /B runas /user:%RUN_AS_USER% "C:\Users\%username%\AppData\Local\Programs\idena-desktop\Idena.exe"
+    start "Idena" /B runas /user:%RUN_AS_USER% "%USERPROFILE%\AppData\Local\Programs\idena-desktop\Idena.exe"
 )
 
 @echo on
