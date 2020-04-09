@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.15"
+VERSION="v0.2.16"
 donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
@@ -1418,6 +1418,8 @@ generate_configs()
 		supervisor_conf=$supervisor_conf"directory=$location\n"
 		supervisor_conf=$supervisor_conf"command=$location/idena-node-linux-latest "
 		supervisor_conf=$supervisor_conf"--config=$location/config-%(program_name)s.json --apikey=$api_key\n"
+		supervisor_conf=$supervisor_conf"autorestart=true\n"
+		supervisor_conf=$supervisor_conf"startretries=300\n"
 		if [ -n "$username" ]
 		then
 			supervisor_conf=$supervisor_conf"user=$username\n"
