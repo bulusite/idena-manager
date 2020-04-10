@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.16"
+VERSION="v0.2.17"
 donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
@@ -82,7 +82,7 @@ send_confirmation_email()
 	success_notification "" "Trying to send test email for confirmation." " This could take up to a minute"
 	mailtemp=$(mktemp)
 	sendmail "$my_email" <<EOF
-Subject: Iden Node email Notifications were setup successfully
+Subject: Idena node e-mail notifications were set up successfully
 To: $my_email
 From: Idena Manager <$USER@$HOSTNAME>
 Content-Type: text/html; charset="utf-8"
@@ -145,15 +145,15 @@ Content-Type: text/html; charset="utf-8"
 		<div>
 			<p>
 				Hello,<br>
-				you successfully setup your email notifications for idena-manager.
+				you have successfully set up your e-mail notifications for idena-manager.
 			</p>
 			<p>
-				idena-manager will notify you only in case it hasn't been to handle some kind of error
-				on node instance. It won't bother you in all other cases where it managed to fix error by iteself.
+				Idena-manager will notify you only if it hasn't been able to handle some kind of an error on your
+				node instance. It won't bother you in any other case where it managed to fix an error by itself.
 			</p>
 		</div>
 		<div class="center">
-			<p>Please support the project and donate to this idena address:<p>
+			<p>Please support the project by donating to this Idena address:<p>
 			<p class="donation">$donation_address</p>
 		</div>
 	</body>
@@ -1419,8 +1419,8 @@ generate_configs()
 		supervisor_conf=$supervisor_conf"command=$location/idena-node-linux-latest "
 		supervisor_conf=$supervisor_conf"--config=$location/config-%(program_name)s.json --apikey=$api_key\n"
 		supervisor_conf=$supervisor_conf"autorestart=true\n"
-		supervisor_conf=$supervisor_conf"startretries=300\n"
-		if [ -n "$username" ]
+		supervisor_conf=$supervisor_conf"startretries=30\n"
+		if [ -n "$username" ] && [ "$username" != "null" ]
 		then
 			supervisor_conf=$supervisor_conf"user=$username\n"
 		fi
@@ -2055,8 +2055,15 @@ get_user_executor()
 
 	if [ -z "$user_executor" ] || [ "$user_executor" == "null" ]
 	then
-		if [ -n "$USER" ]
+		if [ -z "$USER" ] || [ "$USER" == "null" ]
 		then
+			owner_user=$(stat -c '%U' "$0")
+
+			if [ -n "$owner_user" ] && [ "$owner_user" != "null" ]
+			then
+				write_json 'user' "$owner_user"
+			fi
+		else
 			write_json 'user' "$USER"
 			user_executor="$USER"
 		fi
@@ -2123,7 +2130,7 @@ case $1 in
 		command=$1
 		OPTIND=2
 		;;
-	adjust-sudo-permissions)
+	adjust-sudo-permissions|set-user)
 		command=$1
 		OPTIND=2
 		;;
@@ -2162,6 +2169,7 @@ esac
 [ "$command" = "migrate" ] && migrate "$@"
 [ "$command" = "change-online-status" ] && change_online_status "$@"
 [ "$command" = "adjust-sudo-permissions" ] && adjust_supervisor_sudo_permissions
+[ "$command" = "set-user" ] && get_user_executor "$@"
 
 shift $((OPTIND-1))
 

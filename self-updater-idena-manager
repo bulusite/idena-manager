@@ -13,7 +13,7 @@ get_realpath_location()
 
 gpi="17508755" #git project ID
 location=$(dirname $(get_realpath_location "$0"))
-file_version="v0.2.16"
+file_version="v0.2.17"
 
 wget -q -nv -O \
 	"$location/idena-manager" \
@@ -24,6 +24,7 @@ wget -q -nv -O \
 	"https://gitlab.com/api/v4/projects/$gpi/repository/files/idena-manager-autocomplete.bash/raw?ref=$file_version"
 
 source $(bash $location/idena-manager setup-autocomplete)
+bash $location/idena-manager set-user
 bash $location/idena-manager cron
 bash $location/idena-manager regenerate
 chmod +x $location/idena-manager

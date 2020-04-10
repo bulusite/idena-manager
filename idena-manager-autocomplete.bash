@@ -54,6 +54,7 @@ _completions()
 			COMMANDS+=("check-corrupt-db")
 			COMMANDS+=("migrate")
 			COMMANDS+=("adjust-sudo-permissions")
+			COMMANDS+=("set-user")
 
 			COMPREPLY=($(compgen -W "${COMMANDS[*]}" "${COMP_WORDS[1]}"))
 			return
