@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.17"
+VERSION="v0.2.18"
 donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
@@ -1702,12 +1702,13 @@ add()
 		rpc_port_num=$(find_next_port "$rpc_port_num" "${ports[*]}")
 		ports+=("$rpc_port_num")
 
-		if [ ! "$api_key" = "generate_random_key" ]
+		if [ "$api_key" == "generate_random_key" ]
+		then
+			api_key=""
+		elif [ -z "$api_key" ]
 		then
 			# shellcheck disable=SC2162
 			read -p "Please enter node $i Api Key (leave empty to automatically generate random key): " api_key
-		else
-			api_key=""
 		fi
 		if [ -z "$api_key" ]
 		then
@@ -1715,10 +1716,11 @@ add()
 			#printf "\tNode $node_i Api Key is \e[32m$api_key\e[39m\n"
 		fi
 
-		if [ "$wallet_key" = "new_installation" ]
+		if [ "$wallet_key" == "new_installation" ]
 		then
 			wallet_key=""
-		else
+		elif [ -z "$wallet_key" ]
+		then
 			# shellcheck disable=SC2162
 			read -p "Please enter node $i wallet (leave empty if this is first/new installation): " wallet_key
 		fi
