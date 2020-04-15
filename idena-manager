@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.18"
+VERSION="v0.2.19"
 donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
@@ -55,7 +55,11 @@ show_help()
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 \"idena\" - this will change API key to \"idena\" on Node ID 1" "\n" \
 	"\t\t\t\t\t\t\t" "Example: change-api-key 1 \"\" - this will generate random API key and apply it to Node ID 1" \
 	"\n" \
-	"" "17) status" "\t\t\t\t\t\t" "Get status of all node instances (including API keys and ports)" "\n" \
+	"" "17) change-node-key <node_id> [node_key]" "\t\t" "Change Node Key for a node instance. " "\n" \
+	"\t\t\t\t\t\t\t" "Example: change-node-key 1 - this will ask you for a key and change it on Node ID 1" "\n" \
+	"\t\t\t\t\t\t\t" "Example: change-node-key 1 \"xxxxx\" - this will change Node Key to \"xxxxx\" on Node ID 1" "\n" \
+	"\n" \
+	"" "18) status" "\t\t\t\t\t\t" "Get status of all node instances (including API keys and ports)" "\n" \
 	"\n" \
 	"Please note: only one email for all instances can be set. In case you add new server and set another email" \
 	"during installation, that email will be used for all other instances as well"
@@ -582,6 +586,50 @@ disable()
 	done
 
 	generate_configs
+}
+
+change_node_key()
+{
+	node_id=$2
+	new_node_key=$3
+
+	if [ -z "$node_id" ]
+	then
+		error_notification "Please specify Node ID"
+		exit 1
+	fi
+
+	if [ -z "$new_node_key" ]
+	then
+		# shellcheck disable=SC2162
+		read -p "Please enter node $node_id Node Key: " new_node_key
+	fi
+
+	if [ -z "$new_node_key" ]
+	then
+		error_notification "You must specify node key in order to change it"
+		exit 1
+	fi
+
+	install_required_packages
+
+	i=0
+	for node in $(get_json '.nodes[]?'); do
+		id=$(echo "$node" | jq -r '.id')
+		location=$(echo "$node" | jq -r '.location')
+		if [ "$node_id" == "$id" ]
+		then
+			supervisor_stop "idena:node$id"
+			write_json "nodes[$i].wallet_key" "$new_node_key"
+			mkdir -p "$location/datadir-node$id/keystore"
+			echo "$new_node_key" > "$location/datadir-node$id/keystore/nodekey"
+			success_notification "Changed Node Key for Node ID $node_id to: " "$new_node_key"
+			generate_configs
+
+			break
+		fi
+		i=$((i+1))
+	done
 }
 
 change_api_key()
@@ -2096,6 +2144,10 @@ case $1 in
 		command=$1
 		OPTIND=2
 		;;
+	change-node-key)
+		command=$1
+		OPTIND=2
+		;;
 	read-logs|error-logs|output-logs)
 		command=$1
 		OPTIND=2
@@ -2160,6 +2212,7 @@ esac
 [ "$command" = "status" ] && status "$@"
 [ "$command" = "generate-ssh" ] && generate_ssh_tunnel "$@"
 [ "$command" = "change-api-key" ] && change_api_key "$@"
+[ "$command" = "change-node-key" ] && change_node_key "$@"
 [ "$command" = "read-logs" ] && read_stdout_logs "$@"
 [ "$command" = "output-logs" ] && read_output_logs "$@"
 [ "$command" = "error-logs" ] && read_stderr_logs "$@"
