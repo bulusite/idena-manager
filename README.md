@@ -1,3 +1,6 @@
+# Update 2020-05-30
+ - Please note that development of Idena Manager is discontinued. Idena Manager currently works as intended, but all future development has been canceled.
+
 # Idena Manager
 
  - If this idena-manager is helping you, please donate to this idena address: ***0x078dbf1f37d2f4561600c4d9de49bf3e498657ae***
