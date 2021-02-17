@@ -13,7 +13,7 @@ get_realpath_location()
 
 gpi="17508755" #git project ID
 location=$(dirname $(get_realpath_location "$0"))
-file_version="v0.2.19"
+file_version="v0.2.20"
 
 wget -q -nv -O \
 	"$location/idena-manager" \
@@ -26,5 +26,4 @@ wget -q -nv -O \
 source $(bash $location/idena-manager setup-autocomplete)
 bash $location/idena-manager set-user
 bash $location/idena-manager cron
-bash $location/idena-manager regenerate
 chmod +x $location/idena-manager

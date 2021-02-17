@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.19"
+VERSION="v0.2.20"
 donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
@@ -943,6 +943,7 @@ install_required_packages()
 	n_sendmail=0
 	n_superlance=0
 	n_multitail=0
+	n_zip=0
 
 	if ! hash jq 2>/dev/null;
 	then
@@ -977,6 +978,11 @@ install_required_packages()
 		n_multitail=1
 	fi
 
+	if ! hash zip 2>/dev/null;
+	then
+		n_zip=1
+	fi
+
 	if [ -n "$email" ]
 	then
 		if ! hash pip 2>/dev/null;
@@ -998,7 +1004,7 @@ install_required_packages()
 		fi
 	fi
 
-	if [ $((n_supervisor + n_pip + n_sendmail + n_superlance + n_multitail)) -gt 0 ]
+	if [ $((n_supervisor + n_pip + n_sendmail + n_superlance + n_multitail + n_zip)) -gt 0 ]
 	then
 		update_packages
 
@@ -1011,6 +1017,11 @@ install_required_packages()
 		if [ $((n_multitail)) == 1 ]
 		then
 			sudo apt-get -qq -y install multitail > /dev/null
+		fi
+
+		if [ $((n_zip)) == 1 ]
+		then
+			sudo apt-get -qq -y install zip > /dev/null
 		fi
 
 		if [ $((n_pip)) == 1 ]
@@ -1153,6 +1164,19 @@ download_node()
 	fi
 }
 
+download_file()
+{
+	download_file_link="$1"
+	download_file_location="$2"
+
+	if wget -q -nv -O "$download_file_location" "$download_file_link"
+	then
+		return 1
+	else
+		return 0
+	fi
+}
+
 change_online_status()
 {
 	status=$2
@@ -1274,6 +1298,7 @@ do_update_nodes()
 
 	should_update=0
 	download_location=""
+	idenachain_db_zip_file=""
 
 	for node in $(get_json '.nodes[]?'); do
 		id=$(echo "$node" | jq -r '.id')
@@ -1290,6 +1315,8 @@ do_update_nodes()
 		else
 			should_update=1
 			download_location="$location/idena-node-linux-latest-temp"
+
+			idenachain_db_zip_file="$location/idenachain.db.zip"
 			break
 		fi
 	done
@@ -1297,6 +1324,25 @@ do_update_nodes()
 	if [ $((should_update)) -eq 1 ]
 	then
 		supervisor_stop
+
+		if [ -n "$idenachain_db_zip_file" ]
+		then
+			download_file "https://sync.idena.site/idenachain.db.zip" "$idenachain_db_zip_file"
+
+			success=$?
+			if [ $success == 1 ]
+			then
+				success_notification "Finished downloading idenachain.db file"
+				if ! hash zip 2>/dev/null;
+				then
+					install_required_packages
+				fi
+			else
+				error_notification "Failed to download idenachain.db file"
+				idenachain_db_zip_file=""
+			fi
+		fi
+
 		download_node "$download_link" "$latest_version" "$download_location"
 		success=$?
 		if [ $success == 1 ]
@@ -1312,9 +1358,25 @@ do_update_nodes()
 			location=$(echo "$node" | jq -r '.location')
 
 			cp -f "$download_location" "$location/idena-node-linux-latest"
+
+			if [ -n "$idenachain_db_zip_file" ]
+			then
+				mkdir -p "$location/datadir-node$i/idenachain.db/"
+				# shellcheck disable=SC2012
+				count_files_idenachain=$(ls "$location/datadir-node$i/idenachain.db/" | wc -l)
+				if [ $((count_files_idenachain)) -le 0 ]
+				then
+					unzip -qq "$idenachain_db_zip_file" -d "$location/datadir-node$i/idenachain.db/"
+				fi
+			fi
 		done
 
 		rm "$download_location"
+		if [ -n "$idenachain_db_zip_file" ]
+		then
+			rm "$idenachain_db_zip_file"
+		fi
+
 		supervisor_start
 		success_notification "All nodes have been updated to: " "$latest_version"
 	fi
@@ -1614,6 +1676,11 @@ setup_crontab()
 		crontab -l | grep -v 'idena-manager update' | crontab -
 	fi
 
+	if crontab -l 2>&1 | grep -q 'idena-manager restart'
+	then
+		crontab -l | grep -v 'idena-manager restart' | crontab -
+	fi
+
 	if crontab -l 2>&1 | grep -q $ssu
 	then
 		crontab -l | grep -v $ssu  | crontab -
@@ -1622,6 +1689,11 @@ setup_crontab()
 	if ! crontab -l 2>&1 | grep -q 'idena-manager update'
 	then
 		(crontab -l ; echo "*/30 * * * * $manager_location/idena-manager update")| crontab -
+	fi
+
+	if ! crontab -l 2>&1 | grep -q 'idena-manager restart'
+	then
+		(crontab -l ; echo "1 0 * * * $manager_location/idena-manager restart")| crontab -
 	fi
 
 	if ! crontab -l 2>&1 | grep -q $ssu
