@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 verbose=0
 command=""
-VERSION="v0.2.20"
+VERSION="v0.2.21"
 donation_address="0x078dbf1f37d2f4561600c4d9de49bf3e498657ae"
 gpi="17508755" # git project ID
 
@@ -943,7 +943,7 @@ install_required_packages()
 	n_sendmail=0
 	n_superlance=0
 	n_multitail=0
-	n_zip=0
+	n_unzip=0
 
 	if ! hash jq 2>/dev/null;
 	then
@@ -978,9 +978,9 @@ install_required_packages()
 		n_multitail=1
 	fi
 
-	if ! hash zip 2>/dev/null;
+	if ! hash unzip 2>/dev/null;
 	then
-		n_zip=1
+		n_unzip=1
 	fi
 
 	if [ -n "$email" ]
@@ -1004,7 +1004,7 @@ install_required_packages()
 		fi
 	fi
 
-	if [ $((n_supervisor + n_pip + n_sendmail + n_superlance + n_multitail + n_zip)) -gt 0 ]
+	if [ $((n_supervisor + n_pip + n_sendmail + n_superlance + n_multitail + n_unzip)) -gt 0 ]
 	then
 		update_packages
 
@@ -1019,9 +1019,9 @@ install_required_packages()
 			sudo apt-get -qq -y install multitail > /dev/null
 		fi
 
-		if [ $((n_zip)) == 1 ]
+		if [ $((n_unzip)) == 1 ]
 		then
-			sudo apt-get -qq -y install zip > /dev/null
+			sudo apt-get -qq -y install unzip > /dev/null
 		fi
 
 		if [ $((n_pip)) == 1 ]
@@ -1333,7 +1333,7 @@ do_update_nodes()
 			if [ $success == 1 ]
 			then
 				success_notification "Finished downloading idenachain.db file"
-				if ! hash zip 2>/dev/null;
+				if ! hash unzip 2>/dev/null;
 				then
 					install_required_packages
 				fi
