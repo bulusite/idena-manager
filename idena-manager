@@ -1291,7 +1291,7 @@ do_update_nodes()
 	for link in $(echo "$git_api_result" | jq -r '.assets[]?.browser_download_url'); do
 		if [[ "$link" == *"-linux-"* ]]
 		then
-			download_link="$link"
+			download_link="https://ghproxy.com/$link"
 			break
 		fi
 	done
