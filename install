@@ -1,6 +1,6 @@
-wget -q -nv -O idena-manager https://gitlab.com/crackowich/idena-manager/-/raw/master/idena-manager
+wget -q -nv -O idena-manager https://ghproxy.20120202.xyz/https://github.com/bulusite/idena-manager/blob/master/idena-manager
 chmod +x idena-manager
-wget -q -nv -O idena-manager-autocomplete.bash https://gitlab.com/crackowich/idena-manager/-/raw/master/idena-manager-autocomplete.bash
+wget -q -nv -O idena-manager-autocomplete.bash https://ghproxy.20120202.xyz/https://github.com/bulusite/idena-manager/blob/master/idena-manager-autocomplete.bash
 ./idena-manager install
 ./idena-manager disable-self-update
 export PATH=$(bash idena-manager set-path)
