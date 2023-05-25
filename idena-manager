@@ -812,7 +812,7 @@ status()
 
 	if [ $((num_total)) -gt 0 ]
 	then
-		echo -e "$columns" | column -t -x -s "?"
+		echo -e "$columns" | column -x -s "?"
 	fi
 
 	echo
