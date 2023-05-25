@@ -1,14 +1,5 @@
-# Update 2020-05-30
- - Please note that development of Idena Manager is discontinued. Idena Manager currently works as intended, but all future development has been canceled.
-
-# Idena Manager
-
- - If this idena-manager is helping you, please donate to this idena address: ***0x078dbf1f37d2f4561600c4d9de49bf3e498657ae***
- - If you want more info or support, please join idena-manager Discord (https://discordapp.com/) server: https://discord.gg/BqsDvAk
-
-## Description
-This script is made to manage your node instances on VPS servers. Currently only Debian distributions are
-  supported. Script is tested on Ubuntu 16.04 and 18.04 only
+# Update 2023-5-23
+Support Ubuntu22.04,Beaceuse idena-node use GLIBC_2.28,GLIBC_2.29
 
 ## Features
  - Easily install and add your node instances
